@@ -103,6 +103,23 @@ jobs:
           fi
           exit "$result"
 
+      - name: List target output files
+        if: always()
+        run: |
+          mkdir -p .work
+          {
+            echo "===== TARGET OUTPUT FILES ====="
+            if [ -d .work/openwrt/bin/targets ]; then
+              find .work/openwrt/bin/targets \
+                -maxdepth 6 \
+                -type f \
+                -printf '%p\t%s bytes\n' \
+                2>/dev/null | sort
+            else
+              echo "bin/targets not found"
+            fi
+          } | tee .work/target-output-files.txt
+
       - name: Keep build inventory
         if: ${{ env.KEEP_BUILD_INFO == 'true' }}
         run: |
@@ -125,6 +142,7 @@ jobs:
           fi
           cp .work/source.log .work/artifact/source.log
           cp .work/patch.log .work/artifact/patch.log
+          [ -f .work/target-output-files.txt ] && cp .work/target-output-files.txt .work/artifact/target-output-files.txt
           [ "$KEEP_BUILD_INFO" = true ] && cp -r .work/build-info .work/artifact/ || true
 
       - name: Prepare failure diagnostics
@@ -136,6 +154,7 @@ jobs:
           done
           [ -f .work/openwrt/.config ] && cp .work/openwrt/.config .work/failure/config.full
           [ -f .work/patch.log ] && cp .work/patch.log .work/failure/patch.log
+          [ -f .work/target-output-files.txt ] && cp .work/target-output-files.txt .work/failure/target-output-files.txt
           df -h > .work/failure/disk-space.txt
 
       - name: Upload successful firmware

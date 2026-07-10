@@ -17,3 +17,32 @@
 
 本文件不把源码可编译性写成硬件可用性；在没有实机测试前，不使用 Fully Working、Stable、Production Ready 或 All Hardware Supported 等表述。
 
+## Artifact collection fix
+
+Previous run:
+
+29090710387
+
+Firmware build:
+
+PASS
+
+Failure stage:
+
+Collect and verify image
+
+Observed error:
+
+packages.manifest missing
+
+Root cause:
+
+Run 29090710387 generated `immortalwrt-sunxi-cortexa53-friendlyarm_nanopi-k1-plus.manifest`, but the old artifact verification required the fixed filename `packages.manifest`.
+
+Fix:
+
+Artifact collection now discovers K1 Plus `*.img` / `*.img.gz` files and accepts either `packages.manifest` or the generated `*.manifest` file. Verification still requires the image, DTB, config, build metadata, checksum validation, and `rtl8189es.ko`; it verifies `kmod-rtl8189es` when a manifest is present.
+
+Next validation:
+
+Rerun GitHub Actions on `feat/nanopi-k1-plus` and inspect the new `target-output-files.txt` artifact entry.
