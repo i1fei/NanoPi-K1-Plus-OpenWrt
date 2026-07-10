@@ -63,11 +63,13 @@ jobs:
 
       - name: Clone fixed source
         run: |
+          set -o pipefail
           mkdir -p .work .cache/ccache
           ./scripts/prepare-source.sh "$GITHUB_WORKSPACE/.work/openwrt" "$SOURCE_REF" | tee .work/source.log
 
       - name: Update feeds and apply K1 Plus patches
         run: |
+          set -o pipefail
           cd .work/openwrt
           ./scripts/feeds update -a
           ./scripts/feeds install -a
