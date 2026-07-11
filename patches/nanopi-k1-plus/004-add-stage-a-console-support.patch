@@ -5,8 +5,8 @@ Subject: [PATCH] sunxi: enable K1 Plus HDMI tty console support
 
 ---
  package/boot/uboot-sunxi/uEnv-a64.txt   |  2 +-
- target/linux/sunxi/cortexa53/config-6.18 | 23 +++++++++++++++++++++++
- 2 files changed, 24 insertions(+), 1 deletion(-)
+ target/linux/sunxi/cortexa53/config-6.18 | 24 ++++++++++++++++++++++++
+ 2 files changed, 25 insertions(+), 1 deletion(-)
 
 diff --git a/package/boot/uboot-sunxi/uEnv-a64.txt b/package/boot/uboot-sunxi/uEnv-a64.txt
 index 111111111111..222222222222 100644
@@ -24,7 +24,7 @@ diff --git a/target/linux/sunxi/cortexa53/config-6.18 b/target/linux/sunxi/corte
 index 333333333333..444444444444 100644
 --- a/target/linux/sunxi/cortexa53/config-6.18
 +++ b/target/linux/sunxi/cortexa53/config-6.18
-@@ -45,6 +45,29 @@ CONFIG_DMA_DIRECT_REMAP=y
+@@ -45,6 +45,30 @@ CONFIG_DMA_DIRECT_REMAP=y
  CONFIG_DMA_NEED_SYNC=y
  CONFIG_DWMAC_SUN55I=y
  CONFIG_DWMAC_SUN8I=y
@@ -46,6 +46,7 @@ index 333333333333..444444444444 100644
 +CONFIG_DRM_PANEL=y
 +CONFIG_DRM_PANEL_ORIENTATION_QUIRKS=y
 +CONFIG_DRM_SUN4I=y
++# CONFIG_DRM_SUN6I_DSI is not set
 +# CONFIG_DRM_SUN4I_HDMI is not set
 +# CONFIG_DRM_SUN4I_HDMI_CEC is not set
 +CONFIG_DRM_SUN8I_DW_HDMI=y

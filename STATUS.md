@@ -146,3 +146,27 @@ UNCHANGED
 Next:
 
 Rerun the existing workflow and inspect the new Run result.
+
+## Stage A kernel config fix
+
+Failed run:
+
+29136283191
+
+Failure:
+
+DRM_SUN6I_DSI appeared as an unresolved NEW option.
+
+Resolution:
+
+MIPI-DSI is not used by NanoPi K1 Plus HDMI.
+
+`CONFIG_DRM_SUN6I_DSI` is explicitly disabled.
+
+Stage A HDMI implementation:
+
+UNCHANGED
+
+Next:
+
+Rebuild Stage A firmware.
