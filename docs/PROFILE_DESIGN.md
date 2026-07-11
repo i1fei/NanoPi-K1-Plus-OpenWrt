@@ -1,0 +1,113 @@
+# NanoPi K1 Plus Profile Design
+
+This document defines two candidate profiles. The current active config remains
+`configs/NanoPi_K1_Plus.config` and is not modified by this profile work.
+
+## Base Profile Goal
+
+`configs/NanoPi_K1_Plus_base.config` is the stable daily baseline:
+
+- NanoPi K1 Plus sunxi/cortexa53 target.
+- 512 MB rootfs.
+- LuCI with package manager.
+- Simplified Chinese LuCI.
+- Dropbear SSH.
+- RTL8189ES driver only; no Wi-Fi AP stack.
+- MMC, USB HID, USB storage.
+- ext4, vfat, exfat, ntfs3.
+- block-mount and e2fsprogs.
+- Basic field tools: nano, curl, wget-ssl, htop, ethtool, iperf3, usbutils.
+- HDMI/input diagnostics: libdrm tests and evtest.
+
+Base excludes Samba, ttyd, file browser, Bluetooth, OpenSSH server, statistics,
+DDNS, UPnP, SQM, WireGuard, MiniDLNA, containers, eFlasher, audio, camera, and
+infrared.
+
+## Full Profile Goal
+
+`configs/NanoPi_K1_Plus_full.config` is a richer candidate image and must remain
+a functional superset of Base, except for mutually exclusive providers and the
+larger rootfs size:
+
+- 1024 MB rootfs.
+- HTTPS LuCI with OpenSSL backend.
+- Argon theme and Argon config.
+- ttyd and LuCI commands.
+- File browser and disk manager.
+- Wi-Fi AP stack with `wpad-openssl`.
+- Samba4, LuCI Samba4, WSD discovery, and OpenSSH SFTP server.
+- USB Storage UAS and disk utilities.
+- Common USB serial adapters.
+- Common USB Ethernet adapters.
+- External USB Bluetooth preparation.
+- Hardware tools: mmc-utils, i2c-tools, gpiod-tools, evtest, libdrm tests,
+  tcpdump, ip-full, lsof, strace.
+- Lightweight monitoring: LuCI statistics, collectd modules, watchcat.
+
+## RootFS Size
+
+| Profile | RootFS |
+| --- | ---: |
+| Base | 512 MB |
+| Full | 1024 MB |
+
+## Wi-Fi Strategy
+
+Base keeps the RTL8189ES driver but intentionally does not include Wi-Fi AP
+services.
+
+Full selects only one complete AP provider:
+
+- `wpad-openssl`
+
+The validation workflow rejects conflicting `wpad-basic-*`, `wpad-mbedtls`, or
+`wpad-wolfssl` selections.
+
+## Bluetooth Strategy
+
+Full prepares external USB Bluetooth only:
+
+- `kmod-bluetooth`
+- `kmod-btusb`
+- BlueZ daemon and utilities
+
+Onboard Bluetooth remains:
+
+- Hardware: `UNKNOWN`
+- DTS: `NOT IMPLEMENTED`
+- Hardware test: `UNTESTED`
+
+No UART Bluetooth DTS or board-level Bluetooth assumption is added.
+
+## HDMI Status
+
+HDMI remains `FAIL / NO OUTPUT` on hardware. These profiles only include
+diagnostic tools. They do not claim HDMI is fixed and do not add HDMI audio,
+3.5 mm audio, I2S, camera, or infrared support.
+
+## Explicitly Excluded
+
+Both profiles exclude:
+
+- Qt, X11, Wayland, browser stacks.
+- NetworkManager.
+- Docker, Podman, LXC.
+- `ALL_KMODS`, `ALL_NONSHARED`, `DEVEL`, `SDK`, toolchain image options.
+- eFlasher and automatic eMMC writing.
+- HDMI audio, 3.5 mm audio, I2S.
+- Camera and infrared.
+- MiniDLNA.
+- Proxy plugins and large downloaders.
+
+## Validation
+
+Local Windows validation does not run `make`, `gcc`, `feeds`, or OpenWrt build
+steps. `Validate NanoPi K1 Plus Profiles` runs on GitHub Actions Ubuntu 24.04
+and performs:
+
+- fixed ImmortalWrt source checkout,
+- feeds update/install,
+- K1 Plus patch application,
+- per-profile `make defconfig`,
+- resolved config checks,
+- compact validation artifact upload.

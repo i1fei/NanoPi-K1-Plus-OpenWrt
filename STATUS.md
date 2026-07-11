@@ -255,3 +255,37 @@ NOT TRIGGERED
 Next:
 
 Generate Base Profile and Full Profile from the feature matrix.
+
+## Configuration Profiles
+
+Base Profile:
+
+PREPARED
+
+Full Profile:
+
+PREPARED
+
+Local make defconfig:
+
+NOT USED
+
+GitHub Actions validation:
+
+PENDING
+
+Current active config:
+
+UNCHANGED
+
+Firmware build:
+
+NOT STARTED
+
+HDMI:
+
+FAIL / NO OUTPUT
+
+Onboard Bluetooth:
+
+UNKNOWN

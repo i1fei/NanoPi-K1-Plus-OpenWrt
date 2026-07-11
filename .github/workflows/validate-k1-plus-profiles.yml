@@ -1,0 +1,74 @@
+name: Validate NanoPi K1 Plus Profiles
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        profile:
+          - base
+          - full
+    env:
+      SOURCE_REF: 4cafb73e88b6cf61cfeca2ee6cf8ecabb60f7a07
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v7.0.0
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential clang flex bison g++ gawk gcc-multilib gettext \
+            git libncurses-dev libssl-dev python3-setuptools rsync swig \
+            unzip zlib1g-dev file wget xsltproc device-tree-compiler \
+            python3-pyelftools ccache
+
+      - name: Prepare fixed source
+        run: |
+          set -o pipefail
+          mkdir -p .work
+          ./scripts/prepare-source.sh \
+            "$GITHUB_WORKSPACE/.work/openwrt-${{ matrix.profile }}" \
+            "$SOURCE_REF" | tee ".work/source-${{ matrix.profile }}.log"
+
+      - name: Update feeds and apply K1 Plus patches
+        run: |
+          set -o pipefail
+          source_dir="$GITHUB_WORKSPACE/.work/openwrt-${{ matrix.profile }}"
+          cd "$source_dir"
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+          cd "$GITHUB_WORKSPACE"
+          ./scripts/apply-patches.sh "$source_dir" "$GITHUB_WORKSPACE" | tee ".work/patch-${{ matrix.profile }}.log"
+
+      - name: Run make defconfig
+        run: |
+          source_dir="$GITHUB_WORKSPACE/.work/openwrt-${{ matrix.profile }}"
+          cp "configs/NanoPi_K1_Plus_${{ matrix.profile }}.config" "$source_dir/.config"
+          cd "$source_dir"
+          make defconfig
+
+      - name: Validate resolved profile
+        run: |
+          source_dir="$GITHUB_WORKSPACE/.work/openwrt-${{ matrix.profile }}"
+          out_dir="$GITHUB_WORKSPACE/.work/profile-validation-${{ matrix.profile }}"
+          sh ./scripts/validate-profile-config.sh \
+            "${{ matrix.profile }}" \
+            "configs/NanoPi_K1_Plus_${{ matrix.profile }}.config" \
+            "$source_dir/.config" \
+            "$out_dir"
+
+      - name: Upload validation artifact
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: NanoPi-K1-Plus-profile-validation-${{ matrix.profile }}
+          path: .work/profile-validation-${{ matrix.profile }}
+          if-no-files-found: warn
