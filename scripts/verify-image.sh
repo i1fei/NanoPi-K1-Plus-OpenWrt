@@ -3,15 +3,27 @@ set -eu
 
 ARTIFACT_DIR=${1:?artifact directory is required}
 VALIDATION_FILE="$ARTIFACT_DIR/stage-a-display-validation.txt"
+FULL_VALIDATION_FILE="$ARTIFACT_DIR/full-profile-manifest-validation.txt"
 
 : > "$VALIDATION_FILE"
+: > "$FULL_VALIDATION_FILE"
 
 record() {
 	printf '%s\n' "$*" >> "$VALIDATION_FILE"
 }
 
+record_full() {
+	printf '%s\n' "$*" >> "$FULL_VALIDATION_FILE"
+}
+
 fail() {
 	record "$1=FAIL"
+	echo "$1 missing or invalid" >&2
+	exit 1
+}
+
+fail_full() {
+	record_full "$1=FAIL"
 	echo "$1 missing or invalid" >&2
 	exit 1
 }
@@ -30,6 +42,20 @@ require_config() {
 	config_line=$(grep -E "^$1=(y|m)$" "$ARTIFACT_DIR/kernel.config" || true)
 	[ -n "$config_line" ] || fail "$1"
 	record "$config_line"
+}
+
+require_manifest_pkg() {
+	grep -Eq "^$1([[:space:]]|$)" "$manifest" || fail_full "$2"
+}
+
+require_openwrt_config_line() {
+	grep -Eq "^$1$" "$ARTIFACT_DIR/openwrt.config" || fail_full "$2"
+}
+
+require_no_manifest_pkg() {
+	if grep -Eq "^$1([[:space:]]|$)" "$manifest"; then
+		fail_full "$2"
+	fi
 }
 
 test -f "$ARTIFACT_DIR/NanoPi-K1-Plus-sunxi-cortexa53.img.gz"
@@ -68,7 +94,7 @@ manifest=$(
 if [ -n "$manifest" ]; then
 	grep -Eq '^kmod-rtl8189es([[:space:]]|$)' "$manifest"
 else
-	echo 'WARNING: manifest file missing; skipping package manifest check' >&2
+	fail "PACKAGE_MANIFEST"
 fi
 
 require_file "$ARTIFACT_DIR/sun50i-h5-nanopi-k1-plus.dtb" "K1_PLUS_DTB"
@@ -94,6 +120,150 @@ require_config CONFIG_INPUT_EVDEV
 if [ -n "$manifest" ]; then
 	require_grep "$manifest" '^kmod-usb-hid([[:space:]]|$)' "MANIFEST_KMOD_USB_HID"
 fi
+
+record_full "PROFILE=FULL"
+require_openwrt_config_line 'CONFIG_TARGET_ROOTFS_PARTSIZE=1024' "ROOTFS_PARTSIZE"
+record_full "ROOTFS_PARTSIZE=1024"
+
+# Package names are from the Full validation artifact 29146205553
+# `enabled-packages.txt`.
+for pkg in luci luci-app-package-manager; do
+	require_manifest_pkg "$pkg" "LUCI"
+done
+record_full "LUCI=PASS"
+
+require_manifest_pkg luci-ssl-openssl "LUCI_HTTPS"
+record_full "LUCI_HTTPS=PASS"
+
+for pkg in \
+	luci-i18n-base-zh-cn \
+	luci-i18n-package-manager-zh-cn \
+	luci-i18n-argon-config-zh-cn \
+	luci-i18n-ttyd-zh-cn \
+	luci-i18n-commands-zh-cn \
+	luci-i18n-filebrowser-zh-cn \
+	luci-i18n-diskman-zh-cn \
+	luci-i18n-samba4-zh-cn \
+	luci-i18n-statistics-zh-cn \
+	luci-i18n-watchcat-zh-cn; do
+	require_manifest_pkg "$pkg" "LUCI_ZH_CN"
+done
+record_full "LUCI_ZH_CN=PASS"
+
+for pkg in ttyd luci-app-ttyd; do
+	require_manifest_pkg "$pkg" "TTYD"
+done
+record_full "TTYD=PASS"
+
+require_manifest_pkg kmod-rtl8189es "RTL8189ES"
+record_full "RTL8189ES=PASS"
+
+for pkg in wpad-openssl hostapd-utils iw-full; do
+	require_manifest_pkg "$pkg" "WIFI_AP_PROVIDER"
+done
+for pkg in \
+	wpad-basic \
+	wpad-basic-mbedtls \
+	wpad-basic-openssl \
+	wpad-basic-wolfssl \
+	wpad-mbedtls \
+	wpad-wolfssl; do
+	require_no_manifest_pkg "$pkg" "WIFI_AP_PROVIDER"
+done
+record_full "WIFI_AP_PROVIDER=PASS"
+
+require_manifest_pkg kmod-usb-hid "USB_HID"
+record_full "USB_HID=PASS"
+
+require_manifest_pkg kmod-usb-storage "USB_STORAGE"
+record_full "USB_STORAGE=PASS"
+
+require_manifest_pkg kmod-usb-storage-uas "USB_UAS"
+record_full "USB_UAS=PASS"
+
+require_manifest_pkg kmod-fs-ext4 "FILESYSTEM_EXT4"
+record_full "FILESYSTEM_EXT4=PASS"
+
+require_manifest_pkg kmod-fs-vfat "FILESYSTEM_VFAT"
+record_full "FILESYSTEM_VFAT=PASS"
+
+require_manifest_pkg kmod-fs-exfat "FILESYSTEM_EXFAT"
+record_full "FILESYSTEM_EXFAT=PASS"
+
+require_manifest_pkg kmod-fs-ntfs3 "FILESYSTEM_NTFS3"
+record_full "FILESYSTEM_NTFS3=PASS"
+
+for pkg in samba4-server luci-app-samba4 wsdd2; do
+	require_manifest_pkg "$pkg" "SAMBA4"
+done
+record_full "SAMBA4=PASS"
+
+require_manifest_pkg openssh-sftp-server "SFTP"
+record_full "SFTP=PASS"
+
+for pkg in kmod-bluetooth kmod-btusb; do
+	require_manifest_pkg "$pkg" "USB_BLUETOOTH"
+done
+record_full "USB_BLUETOOTH=PASS"
+
+for pkg in bluez-daemon bluez-utils bluez-utils-extra; do
+	require_manifest_pkg "$pkg" "BLUEZ"
+done
+record_full "BLUEZ=PASS"
+
+for pkg in \
+	kmod-usb-serial-ch341 \
+	kmod-usb-serial-cp210x \
+	kmod-usb-serial-ftdi \
+	kmod-usb-serial-pl2303; do
+	require_manifest_pkg "$pkg" "USB_SERIAL"
+done
+record_full "USB_SERIAL=PASS"
+
+for pkg in kmod-usb-net-rtl8152 kmod-usb-net-asix kmod-usb-net-asix-ax88179; do
+	require_manifest_pkg "$pkg" "USB_ETHERNET"
+done
+record_full "USB_ETHERNET=PASS"
+
+require_manifest_pkg libdrm-tests "DRM_TESTS"
+record_full "DRM_TESTS=PASS"
+
+require_manifest_pkg evtest "EVTEST"
+record_full "EVTEST=PASS"
+
+for pkg in \
+	mmc-utils \
+	i2c-tools \
+	gpiod-tools \
+	usbutils \
+	ethtool \
+	iperf3 \
+	tcpdump \
+	ip-full \
+	lsof \
+	strace; do
+	require_manifest_pkg "$pkg" "HARDWARE_TOOLS"
+done
+record_full "HARDWARE_TOOLS=PASS"
+
+for pkg in \
+	luci-app-statistics \
+	collectd-mod-cpu \
+	collectd-mod-cpufreq \
+	collectd-mod-thermal \
+	collectd-mod-memory \
+	collectd-mod-load \
+	collectd-mod-interface \
+	collectd-mod-uptime; do
+	require_manifest_pkg "$pkg" "STATISTICS"
+done
+record_full "STATISTICS=PASS"
+
+for pkg in luci-app-watchcat watchcat; do
+	require_manifest_pkg "$pkg" "WATCHCAT"
+done
+record_full "WATCHCAT=PASS"
+record_full "FULL_PROFILE_VERIFY=PASS"
 
 gzip -t "$ARTIFACT_DIR/NanoPi-K1-Plus-sunxi-cortexa53.img.gz"
 (cd "$ARTIFACT_DIR" && sha256sum -c sha256sums)

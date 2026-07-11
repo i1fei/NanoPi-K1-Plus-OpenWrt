@@ -3,6 +3,28 @@
 This document defines two candidate profiles. The current active config remains
 `configs/NanoPi_K1_Plus.config` and is not modified by this profile work.
 
+## Current Active Candidate
+
+The boot-tested minimal configuration is preserved as:
+
+- `configs/NanoPi_K1_Plus_minimal.config`
+
+Configuration profile validation result:
+
+| Profile | make defconfig | Profile validation |
+| --- | --- | --- |
+| Base | PASS | PASS |
+| Full | PASS | PASS |
+
+The active build candidate is now:
+
+- `configs/NanoPi_K1_Plus.config`
+- Source profile: `configs/NanoPi_K1_Plus_full.config`
+
+The active candidate validates software inclusion through the build artifact
+manifest. This proves the software entered the image; it does not prove the
+hardware works.
+
 ## Base Profile Goal
 
 `configs/NanoPi_K1_Plus_base.config` is the stable daily baseline:

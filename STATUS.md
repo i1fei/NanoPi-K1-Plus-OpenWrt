@@ -289,3 +289,37 @@ FAIL / NO OUTPUT
 Onboard Bluetooth:
 
 UNKNOWN
+
+## Full Profile Candidate
+
+Profile validation:
+
+PASS
+
+Active build config:
+
+Full Profile
+
+Minimal boot-tested config:
+
+PRESERVED
+
+Firmware build:
+
+PENDING
+
+HDMI:
+
+FAIL / NO OUTPUT
+
+Wi-Fi AP:
+
+NOT HARDWARE TESTED
+
+External USB Bluetooth:
+
+PREPARED
+
+Onboard Bluetooth:
+
+UNKNOWN
