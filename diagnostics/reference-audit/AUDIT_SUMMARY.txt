@@ -1,0 +1,43 @@
+FriendlyCore Wiki:
+
+PASS
+
+
+Official image download:
+
+PASS
+
+
+Official image extracted:
+
+PASS
+
+
+FriendlyCore package inventory:
+
+UNAVAILABLE
+
+
+sd-fuse_h5:
+
+PASS
+
+
+Actions-FriendlyWrt:
+
+PASS
+
+
+Current ImmortalWrt config:
+
+PASS
+
+
+Feature matrix:
+
+PASS
+
+
+Hardware gap report:
+
+PASS

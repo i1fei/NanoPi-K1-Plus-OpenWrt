@@ -196,3 +196,62 @@ UNCHANGED
 Next:
 
 Rebuild Stage A firmware and inspect the new Run result.
+
+## Reference audit
+
+FriendlyCore Wiki:
+
+PASS
+
+Official image download:
+
+PASS
+
+Official image extraction:
+
+PASS
+
+FriendlyCore software inventory:
+
+UNAVAILABLE
+
+Reason:
+
+The official rootfs is an Android sparse image and the local read-only tooling
+cannot extract the dpkg database.
+
+sd-fuse_h5:
+
+PASS
+
+Actions-FriendlyWrt:
+
+PASS
+
+Current ImmortalWrt audit:
+
+PASS
+
+Feature matrix:
+
+docs/K1_PLUS_FEATURE_MATRIX.md
+
+Hardware gap:
+
+docs/HARDWARE_GAP.md
+
+Current config:
+
+UNCHANGED
+
+DTS:
+
+UNCHANGED
+
+Workflow:
+
+NOT TRIGGERED
+
+Next:
+
+Generate Base Profile and Full Profile from the feature matrix.
