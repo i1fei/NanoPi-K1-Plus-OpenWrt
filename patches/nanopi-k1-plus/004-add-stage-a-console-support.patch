@@ -1,0 +1,56 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: NanoPi K1 Plus OpenWrt project <noreply@example.invalid>
+Date: Sat, 11 Jul 2026 00:00:00 +0800
+Subject: [PATCH] sunxi: enable K1 Plus HDMI tty console support
+
+---
+ package/boot/uboot-sunxi/uEnv-a64.txt   |  2 +-
+ target/linux/sunxi/cortexa53/config-6.18 | 23 +++++++++++++++++++++++
+ 2 files changed, 24 insertions(+), 1 deletion(-)
+
+diff --git a/package/boot/uboot-sunxi/uEnv-a64.txt b/package/boot/uboot-sunxi/uEnv-a64.txt
+index 111111111111..222222222222 100644
+--- a/package/boot/uboot-sunxi/uEnv-a64.txt
++++ b/package/boot/uboot-sunxi/uEnv-a64.txt
+@@ -1,6 +1,6 @@
+ setenv mmc_rootpart 2
+ part uuid mmc ${mmc_bootdev}:${mmc_rootpart} uuid
+ setenv loadkernel fatload mmc \$mmc_bootdev \$kernel_comp_addr_r uImage
+-setenv bootargs coherent_pool=2M console=ttyS0,115200 earlycon=uart,mmio32,0x01c28000 root=PARTUUID=${uuid} rootwait
++setenv bootargs coherent_pool=2M console=ttyS0,115200 console=tty1 earlycon=uart,mmio32,0x01c28000 root=PARTUUID=${uuid} rootwait
+ setenv uenvcmd run loadkernel \&\& bootm \$kernel_comp_addr_r
+ run uenvcmd
+diff --git a/target/linux/sunxi/cortexa53/config-6.18 b/target/linux/sunxi/cortexa53/config-6.18
+index 333333333333..444444444444 100644
+--- a/target/linux/sunxi/cortexa53/config-6.18
++++ b/target/linux/sunxi/cortexa53/config-6.18
+@@ -45,6 +45,29 @@ CONFIG_DMA_DIRECT_REMAP=y
+ CONFIG_DMA_NEED_SYNC=y
+ CONFIG_DWMAC_SUN55I=y
+ CONFIG_DWMAC_SUN8I=y
++CONFIG_DRM=y
++CONFIG_DRM_CLIENT=y
++CONFIG_DRM_CLIENT_DEFAULT="fbdev"
++CONFIG_DRM_CLIENT_DEFAULT_FBDEV=y
++CONFIG_DRM_CLIENT_LIB=y
++CONFIG_DRM_CLIENT_SELECTION=y
++CONFIG_DRM_DISPLAY_HELPER=y
++CONFIG_DRM_DISPLAY_HDMI_AUDIO_HELPER=y
++CONFIG_DRM_DISPLAY_HDMI_HELPER=y
++CONFIG_DRM_DISPLAY_HDMI_STATE_HELPER=y
++CONFIG_DRM_DW_HDMI=y
++CONFIG_DRM_FBDEV_EMULATION=y
++CONFIG_DRM_FBDEV_OVERALLOC=100
++CONFIG_DRM_GEM_DMA_HELPER=y
++CONFIG_DRM_KMS_HELPER=y
++CONFIG_DRM_PANEL=y
++CONFIG_DRM_PANEL_ORIENTATION_QUIRKS=y
++CONFIG_DRM_SUN4I=y
++# CONFIG_DRM_SUN4I_HDMI is not set
++# CONFIG_DRM_SUN4I_HDMI_CEC is not set
++CONFIG_DRM_SUN8I_DW_HDMI=y
++CONFIG_DRM_SUN8I_MIXER=y
++CONFIG_DRM_SUN8I_TCON_TOP=y
+ CONFIG_EXCLUSIVE_SYSTEM_RAM=y
+ CONFIG_FRAME_POINTER=y
+ CONFIG_FUNCTION_ALIGNMENT=4

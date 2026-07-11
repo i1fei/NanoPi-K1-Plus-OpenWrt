@@ -42,6 +42,11 @@ for file in config.buildinfo feeds.buildinfo version.buildinfo profiles.json sha
 	[ -f "$IMAGE_DIR/$file" ] && cp "$IMAGE_DIR/$file" "$ARTIFACT_DIR/$file"
 done
 
+[ -f "$SOURCE_DIR/package/boot/uboot-sunxi/uEnv-a64.txt" ] &&
+	cp "$SOURCE_DIR/package/boot/uboot-sunxi/uEnv-a64.txt" "$ARTIFACT_DIR/uEnv-a64.txt"
+[ -f "$SOURCE_DIR/target/linux/sunxi/base-files/etc/inittab" ] &&
+	cp "$SOURCE_DIR/target/linux/sunxi/base-files/etc/inittab" "$ARTIFACT_DIR/sunxi-inittab"
+
 manifest=$(
 	find "$IMAGE_DIR" -maxdepth 2 -type f -name 'packages.manifest' -print |
 		sort |

@@ -1,0 +1,32 @@
+Stage A display validation
+
+Status:
+
+PREPARED
+
+Build:
+
+PENDING
+
+GitHub Actions validation:
+
+The existing image verification step now writes `stage-a-display-validation.txt` into the build artifact.
+
+Prepared checks:
+
+- K1 Plus DTB exists
+- HDMI connector node exists in the DTB
+- HDMI DesignWare node exists in the DTB
+- `console=ttyS0,115200` exists
+- `console=tty1` exists
+- `ttyS0` login exists
+- `tty1` login exists
+- `CONFIG_DRM_SUN4I` is enabled
+- `CONFIG_FRAMEBUFFER_CONSOLE` is enabled
+- `CONFIG_VT_CONSOLE` is enabled
+- USB HID support is enabled
+- `kmod-usb-hid` exists in the manifest
+
+Hardware test:
+
+UNTESTED

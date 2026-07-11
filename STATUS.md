@@ -86,3 +86,29 @@ UNTESTED
 Next:
 
 使用备用 MicroSD 和 115200 串口进行首次启动测试。不得写入 eMMC。
+
+## Stage A
+
+TTL console:
+
+PREPARED
+
+HDMI Linux console:
+
+PREPARED
+
+tty1:
+
+PREPARED
+
+USB keyboard:
+
+PREPARED
+
+Build:
+
+PENDING
+
+Hardware test:
+
+UNTESTED

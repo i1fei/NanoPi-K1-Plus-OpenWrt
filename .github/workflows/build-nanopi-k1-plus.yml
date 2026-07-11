@@ -155,6 +155,7 @@ jobs:
           [ -f .work/openwrt/.config ] && cp .work/openwrt/.config .work/failure/config.full
           [ -f .work/patch.log ] && cp .work/patch.log .work/failure/patch.log
           [ -f .work/target-output-files.txt ] && cp .work/target-output-files.txt .work/failure/target-output-files.txt
+          [ -f .work/artifact/stage-a-display-validation.txt ] && cp .work/artifact/stage-a-display-validation.txt .work/failure/stage-a-display-validation.txt
           df -h > .work/failure/disk-space.txt
 
       - name: Upload successful firmware
