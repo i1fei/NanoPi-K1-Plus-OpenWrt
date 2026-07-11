@@ -152,10 +152,18 @@ jobs:
           for log in .work/build-parallel.log .work/build-single.log .work/source.log .work/patch.log; do
             [ -f "$log" ] && tail -n 5000 "$log" >> .work/failure/last-5000-lines.log
           done
-          [ -f .work/openwrt/.config ] && cp .work/openwrt/.config .work/failure/config.full
+          [ -f .work/openwrt/.config ] && cp .work/openwrt/.config .work/failure/openwrt.config
           [ -f .work/patch.log ] && cp .work/patch.log .work/failure/patch.log
           [ -f .work/target-output-files.txt ] && cp .work/target-output-files.txt .work/failure/target-output-files.txt
-          [ -f .work/artifact/stage-a-display-validation.txt ] && cp .work/artifact/stage-a-display-validation.txt .work/failure/stage-a-display-validation.txt
+          for file in \
+            dtb-source.txt \
+            kernel-config-source.txt \
+            sun50i-h5-nanopi-k1-plus.dtb \
+            sun50i-h5-nanopi-k1-plus.compiled.dts \
+            kernel.config \
+            stage-a-display-validation.txt; do
+            [ -f ".work/artifact/$file" ] && cp ".work/artifact/$file" ".work/failure/$file"
+          done
           df -h > .work/failure/disk-space.txt
 
       - name: Upload successful firmware

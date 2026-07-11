@@ -27,15 +27,34 @@ require_grep() {
 }
 
 require_config() {
-	require_grep "$ARTIFACT_DIR/config.full" "^$1=(y|m)$" "$1"
+	config_line=$(grep -E "^$1=(y|m)$" "$ARTIFACT_DIR/kernel.config" || true)
+	[ -n "$config_line" ] || fail "$1"
+	record "$config_line"
 }
 
 test -f "$ARTIFACT_DIR/NanoPi-K1-Plus-sunxi-cortexa53.img.gz"
 test -f "$ARTIFACT_DIR/sun50i-h5-nanopi-k1-plus.dtb"
+test -f "$ARTIFACT_DIR/sun50i-h5-nanopi-k1-plus.compiled.dts"
 test -f "$ARTIFACT_DIR/sha256sums"
-test -f "$ARTIFACT_DIR/config.full"
-test -f "$ARTIFACT_DIR/.config"
+test -f "$ARTIFACT_DIR/kernel.config"
+test -f "$ARTIFACT_DIR/openwrt.config"
 test -f "$ARTIFACT_DIR/rtl8189es.build-check.txt"
+
+[ -f "$ARTIFACT_DIR/dtb-source.txt" ] || fail "LINUX_DTB_SOURCE"
+dtb_source=$(sed -n '1p' "$ARTIFACT_DIR/dtb-source.txt")
+case "$dtb_source" in
+	*/linux-sunxi_cortexa53/linux-*/arch/arm64/boot/dts/allwinner/sun50i-h5-nanopi-k1-plus.dtb) ;;
+	*) fail "LINUX_DTB_SOURCE" ;;
+esac
+record "LINUX_DTB_SOURCE=$dtb_source"
+
+[ -f "$ARTIFACT_DIR/kernel-config-source.txt" ] || fail "KERNEL_CONFIG_SOURCE"
+kernel_config_source=$(sed -n '1p' "$ARTIFACT_DIR/kernel-config-source.txt")
+case "$kernel_config_source" in
+	*/linux-sunxi_cortexa53/linux-*/.config) ;;
+	*) fail "KERNEL_CONFIG_SOURCE" ;;
+esac
+record "KERNEL_CONFIG_SOURCE=$kernel_config_source"
 
 for file in config.buildinfo feeds.buildinfo version.buildinfo; do
 	[ -f "$ARTIFACT_DIR/$file" ] || { echo "$file missing" >&2; exit 1; }
@@ -53,13 +72,9 @@ else
 fi
 
 require_file "$ARTIFACT_DIR/sun50i-h5-nanopi-k1-plus.dtb" "K1_PLUS_DTB"
-tmp_dts=$(mktemp)
-trap 'rm -f "$tmp_dts"' EXIT INT HUP TERM
-dtc -I dtb -O dts -o "$tmp_dts" "$ARTIFACT_DIR/sun50i-h5-nanopi-k1-plus.dtb" >/dev/null 2>&1 ||
-	fail "DTB_DECOMPILE"
-record "DTB_DECOMPILE=PASS"
-require_grep "$tmp_dts" 'hdmi-connector' "HDMI_CONNECTOR_NODE"
-require_grep "$tmp_dts" 'allwinner,sun8i-h3-dw-hdmi' "HDMI_DW_NODE"
+require_file "$ARTIFACT_DIR/sun50i-h5-nanopi-k1-plus.compiled.dts" "COMPILED_DTS"
+require_grep "$ARTIFACT_DIR/sun50i-h5-nanopi-k1-plus.compiled.dts" 'compatible = "hdmi-connector"' "HDMI_CONNECTOR_NODE"
+require_grep "$ARTIFACT_DIR/sun50i-h5-nanopi-k1-plus.compiled.dts" 'allwinner,sun8i-h3-dw-hdmi' "HDMI_DW_NODE"
 
 require_file "$ARTIFACT_DIR/uEnv-a64.txt" "UENV_A64"
 require_grep "$ARTIFACT_DIR/uEnv-a64.txt" 'console=ttyS0,115200' "CONSOLE_TTYS0"

@@ -170,3 +170,29 @@ UNCHANGED
 Next:
 
 Rebuild Stage A firmware.
+
+## Stage A artifact validation fix
+
+Failed run:
+
+29138021490
+
+Failure:
+
+`HDMI_CONNECTOR_NODE missing or invalid`
+
+Root cause:
+
+Artifact validation could select a same-name U-Boot DTB and checked the OpenWrt top-level `.config` instead of the compiled Linux DTB and Linux kernel `.config`.
+
+Resolution:
+
+Collect the DTB from the Linux kernel build tree, save its compiled DTS, collect the Linux kernel config as `kernel.config`, and keep the top-level OpenWrt config as `openwrt.config`.
+
+Stage A implementation:
+
+UNCHANGED
+
+Next:
+
+Rebuild Stage A firmware and inspect the new Run result.

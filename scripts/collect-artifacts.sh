@@ -34,9 +34,30 @@ find "$IMAGE_DIR" -maxdepth 2 -type f \( -name '*nanopi-k1-plus*.img' -o -name '
 		cp "$file" "$ARTIFACT_DIR/$(basename "$file")"
 	done
 
-dtb=$(find "$SOURCE_DIR" -type f -name 'sun50i-h5-nanopi-k1-plus.dtb' -print -quit)
-[ -n "$dtb" ] || { echo 'K1 Plus DTB not found' >&2; exit 1; }
+[ -d "$SOURCE_DIR/build_dir" ] || { echo 'OpenWrt build_dir not found' >&2; exit 1; }
+dtb_list=$(mktemp)
+kernel_config_list=$(mktemp)
+trap 'rm -f "$dtb_list" "$kernel_config_list"' EXIT INT HUP TERM
+
+find "$SOURCE_DIR/build_dir" \
+	-type f \
+	-path '*/linux-sunxi_cortexa53/linux-*/arch/arm64/boot/dts/allwinner/sun50i-h5-nanopi-k1-plus.dtb' \
+	-print |
+	sort > "$dtb_list"
+dtb_count=$(wc -l < "$dtb_list" | tr -d '[:space:]')
+if [ "$dtb_count" -ne 1 ]; then
+	echo "expected exactly one Linux K1 Plus DTB, found $dtb_count" >&2
+	sed 's/^/  /' "$dtb_list" >&2
+	exit 1
+fi
+dtb=$(sed -n '1p' "$dtb_list")
+printf '%s\n' "$dtb" > "$ARTIFACT_DIR/dtb-source.txt"
 cp "$dtb" "$ARTIFACT_DIR/sun50i-h5-nanopi-k1-plus.dtb"
+dtc \
+	-I dtb \
+	-O dts \
+	-o "$ARTIFACT_DIR/sun50i-h5-nanopi-k1-plus.compiled.dts" \
+	"$ARTIFACT_DIR/sun50i-h5-nanopi-k1-plus.dtb"
 
 for file in config.buildinfo feeds.buildinfo version.buildinfo profiles.json sha256sums; do
 	[ -f "$IMAGE_DIR/$file" ] && cp "$IMAGE_DIR/$file" "$ARTIFACT_DIR/$file"
@@ -72,8 +93,21 @@ else
 	echo 'WARNING: no manifest file found in target output' >&2
 fi
 
-cp "$SOURCE_DIR/.config" "$ARTIFACT_DIR/config.full"
-cp "$SOURCE_DIR/.config" "$ARTIFACT_DIR/.config"
+find "$SOURCE_DIR/build_dir" \
+	-type f \
+	-path '*/linux-sunxi_cortexa53/linux-*/.config' \
+	-print |
+	sort > "$kernel_config_list"
+kernel_config_count=$(wc -l < "$kernel_config_list" | tr -d '[:space:]')
+if [ "$kernel_config_count" -ne 1 ]; then
+	echo "expected exactly one Linux kernel config, found $kernel_config_count" >&2
+	sed 's/^/  /' "$kernel_config_list" >&2
+	exit 1
+fi
+kernel_config=$(sed -n '1p' "$kernel_config_list")
+printf '%s\n' "$kernel_config" > "$ARTIFACT_DIR/kernel-config-source.txt"
+cp "$kernel_config" "$ARTIFACT_DIR/kernel.config"
+cp "$SOURCE_DIR/.config" "$ARTIFACT_DIR/openwrt.config"
 
 ko=$(find "$SOURCE_DIR" -type f -name 'rtl8189es.ko' -print -quit)
 [ -n "$ko" ] || { echo 'rtl8189es.ko was not generated' >&2; exit 1; }
