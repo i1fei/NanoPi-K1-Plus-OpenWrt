@@ -65,7 +65,7 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p .work .cache/ccache
-          ./scripts/prepare-source.sh "$GITHUB_WORKSPACE/.work/openwrt" "$SOURCE_REF" | tee .work/source.log
+          ./scripts/prepare-source.sh "$GITHUB_WORKSPACE/.work/openwrt" "$SOURCE_REF" 2>&1 | tee .work/source.log
 
       - name: Update feeds and apply K1 Plus patches
         run: |

@@ -112,3 +112,37 @@ PENDING
 Hardware test:
 
 UNTESTED
+
+## Run 29135800000
+
+Status:
+
+COMPLETED
+
+Conclusion:
+
+FAILURE
+
+Failed step:
+
+Clone fixed source
+
+First actionable error:
+
+`source path exists but is not a Git checkout: /home/runner/work/NanoPi-K1-Plus-OpenWrt/NanoPi-K1-Plus-OpenWrt/.work/openwrt`
+
+Root cause:
+
+The GitHub Actions cache restored `.work/openwrt/dl`, which created `.work/openwrt` without a `.git` directory. `scripts/prepare-source.sh` treated that cache-restored directory as fatal before fetching the fixed ImmortalWrt commit.
+
+Fix:
+
+`scripts/prepare-source.sh` now initializes an existing non-Git source directory, fetches the fixed `SOURCE_REF` with bounded retries, and checks out `FETCH_HEAD`. The workflow now captures clone stderr in `.work/source.log`.
+
+Stage A code:
+
+UNCHANGED
+
+Next:
+
+Rerun the existing workflow and inspect the new Run result.
