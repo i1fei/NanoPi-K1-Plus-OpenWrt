@@ -1,12 +1,12 @@
 # Status
 
-最后更新：2026-07-10
+最后更新：2026-07-11
 
 | 阶段 | 状态 | 说明 |
 | --- | --- | --- |
 | Source selection | PASS | ImmortalWrt 固定 SHA，见 `docs/SOURCE_DECISION.md` |
 | DTS/Profile/U-Boot patch | PREPARED | 等待 GitHub Actions 实际编译 |
-| Build | NOT RUN | 未把在线构建结果写成成功 |
+| Build | PASS | GitHub Actions Run 29099502996 已完成，镜像完整性校验通过 |
 | Boot | UNTESTED | 需要用户使用新的备用 MicroSD 启动 |
 | Ethernet | UNTESTED | 需要真实网线测试 |
 | RTL8189ES | UNTESTED | 需要真实 SDIO 枚举和驱动日志 |
@@ -46,3 +46,43 @@ Artifact collection now discovers K1 Plus `*.img` / `*.img.gz` files and accepts
 Next validation:
 
 Rerun GitHub Actions on `feat/nanopi-k1-plus` and inspect the new `target-output-files.txt` artifact entry.
+
+## GitHub Actions Run 29099502996
+
+Status:
+
+COMPLETED
+
+Conclusion:
+
+SUCCESS
+
+Firmware images:
+
+- immortalwrt-sunxi-cortexa53-friendlyarm_nanopi-k1-plus-ext4-sdcard.img.gz
+- immortalwrt-sunxi-cortexa53-friendlyarm_nanopi-k1-plus-squashfs-sdcard.img.gz
+- NanoPi-K1-Plus-sunxi-cortexa53.img.gz
+
+Manifest:
+
+immortalwrt-sunxi-cortexa53-friendlyarm_nanopi-k1-plus.manifest
+
+RTL8189ES package:
+
+FOUND
+
+SHA256:
+
+PASS
+
+Gzip validation:
+
+PASS
+
+Hardware boot:
+
+UNTESTED
+
+Next:
+
+使用备用 MicroSD 和 115200 串口进行首次启动测试。不得写入 eMMC。
