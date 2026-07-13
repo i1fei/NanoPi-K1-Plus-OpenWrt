@@ -80,6 +80,8 @@ index 000000000000..111111111111
 +
 +	leds {
 +		compatible = "gpio-leds";
++		pinctrl-names = "default";
++		pinctrl-0 = <&pwr_led_pin>;
 +
 +		status {
 +			label = "nanopi:green:status";
@@ -96,6 +98,8 @@ index 000000000000..111111111111
 +
 +	r-gpio-keys {
 +		compatible = "gpio-keys";
++		pinctrl-names = "default";
++		pinctrl-0 = <&sw4_pin>;
 +
 +		sw4 {
 +			label = "sw4";
@@ -118,6 +122,8 @@ index 000000000000..111111111111
 +
 +	reg_usb0_vbus: usb0-vbus {
 +		compatible = "regulator-fixed";
++		pinctrl-names = "default";
++		pinctrl-0 = <&usb0_vbus_pin>;
 +		regulator-name = "usb0-vbus";
 +		regulator-min-microvolt = <5000000>;
 +		regulator-max-microvolt = <5000000>;
@@ -201,6 +207,8 @@ index 000000000000..111111111111
 +	mmc-pwrseq = <&wifi_pwrseq>;
 +	bus-width = <4>;
 +	non-removable;
++	keep-power-in-suspend;
++	cap-sdio-irq;
 +	status = "okay";
 +
 +	/* Bind by SDIO ID 024C:8179; do not identify this as Broadcom. */
@@ -249,8 +257,25 @@ index 000000000000..111111111111
 +};
 +
 +&r_pio {
++	status = "okay";
++
++	usb0_vbus_pin: usb0-vbus-pin {
++		pins = "PL2";
++		function = "gpio_out";
++	};
++
++	sw4_pin: sw4-pin {
++		pins = "PL3";
++		function = "gpio_in";
++	};
++
 +	wifi_en_npi: wifi_en_pin {
 +		pins = "PL7";
++		function = "gpio_out";
++	};
++
++	pwr_led_pin: pwr-led-pin {
++		pins = "PL10";
 +		function = "gpio_out";
 +	};
 +
@@ -263,6 +288,7 @@ index 000000000000..111111111111
 +};
 +
 +&r_i2c {
++	clock-frequency = <100000>;
 +	status = "okay";
 +
 +	reg_vdd_cpux: regulator@65 {

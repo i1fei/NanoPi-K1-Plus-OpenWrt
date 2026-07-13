@@ -25,6 +25,14 @@ The active candidate validates software inclusion through the build artifact
 manifest. This proves the software entered the image; it does not prove the
 hardware works.
 
+Current hardware recovery state:
+
+- Full Profile software package set: FROZEN.
+- Active Full Profile rootfs: 4096 MB.
+- MicroSD and eMMC remain independent boot media.
+- Anonymous cross mounting of the other MMC medium is disabled by default.
+- HDMI CMA is prepared, but HDMI runtime output is still untested.
+
 ## Base Profile Goal
 
 `configs/NanoPi_K1_Plus_base.config` is the stable daily baseline:
@@ -51,7 +59,7 @@ infrared.
 a functional superset of Base, except for mutually exclusive providers and the
 larger rootfs size:
 
-- 1024 MB rootfs.
+- 4096 MB rootfs.
 - HTTPS LuCI with OpenSSL backend.
 - Argon theme and Argon config.
 - ttyd and LuCI commands.
@@ -71,7 +79,10 @@ larger rootfs size:
 | Profile | RootFS |
 | --- | ---: |
 | Base | 512 MB |
-| Full | 1024 MB |
+| Full | 4096 MB |
+
+Full uses a fixed 4096 MB rootfs. It does not auto-expand to the full MicroSD
+card and does not migrate or write to eMMC.
 
 ## Wi-Fi Strategy
 
@@ -106,6 +117,10 @@ No UART Bluetooth DTS or board-level Bluetooth assumption is added.
 HDMI remains `FAIL / NO OUTPUT` on hardware. These profiles only include
 diagnostic tools. They do not claim HDMI is fixed and do not add HDMI audio,
 3.5 mm audio, I2S, camera, or infrared support.
+
+The hardware recovery candidate adds a 64 MiB Kernel CMA allocation for DRM
+fbdev allocation. This is a build-time preparation only; it does not make an
+HDMI PASS claim before hardware retesting.
 
 ## Explicitly Excluded
 

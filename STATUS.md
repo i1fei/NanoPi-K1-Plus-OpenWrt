@@ -1,6 +1,6 @@
 # Status
 
-最后更新：2026-07-11
+最后更新：2026-07-13
 
 | 阶段 | 状态 | 说明 |
 | --- | --- | --- |
@@ -323,3 +323,77 @@ PREPARED
 Onboard Bluetooth:
 
 UNKNOWN
+
+## Integrated Hardware Recovery
+
+Full Profile:
+
+SOFTWARE FROZEN
+
+Full RootFS:
+
+4096 MiB
+
+MicroSD / eMMC:
+
+DUAL BOOT MEDIA
+
+NO AUTOMATIC CROSS MOUNT
+
+Boot order:
+
+UNCHANGED
+
+MicroSD priority:
+
+PRESERVED
+
+eMMC fallback:
+
+PRESERVED
+
+R_PIO:
+
+FIX PREPARED / RUNTIME UNTESTED
+
+Wi-Fi SDIO:
+
+FIX PREPARED / RUNTIME UNTESTED
+
+USB VBUS / PHY / Host:
+
+FIX PREPARED / RUNTIME UNTESTED
+
+Power LED:
+
+FIX PREPARED / RUNTIME UNTESTED
+
+GPIO Button:
+
+FIX PREPARED / RUNTIME UNTESTED
+
+R_I2C / SY8106A / CPUFreq:
+
+FIX PREPARED / RUNTIME UNTESTED
+
+HDMI:
+
+CMA FIX PREPARED / RUNTIME UNTESTED
+
+Selected CMA:
+
+64 MiB
+
+Selected CMA reason:
+
+Official FriendlyCore and local H5 references did not expose an explicit CMA
+value. The current runtime has CmaTotal 0 KiB, so the task rule selects 64 MiB
+for the 2 GiB board.
+
+eMMC:
+
+NOT WRITTEN
+
+Workflow:
+
+PENDING

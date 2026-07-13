@@ -1,0 +1,27 @@
+H5 CMA comparison:
+
+FriendlyCore:
+NOT FOUND
+
+sd-fuse_h5:
+NOT FOUND
+
+Actions-FriendlyWrt:
+NOT FOUND
+
+Current OpenWrt / ImmortalWrt sunxi H5 baseline:
+NOT FOUND
+
+Relevant local evidence:
+
+- F:\K1Plus\reference\sd-fuse_h5\prebuilt\boot\boot.cmd
+- F:\K1Plus\reference\sd-fuse_h5\prebuilt\boot\uEnv.txt
+- F:\K1Plus\reference\official-images\friendlycore-xenial_4.14_arm64\boot-extracted\boot.cmd
+- F:\K1Plus\reference\official-images\friendlycore-xenial_4.14_arm64\boot-extracted\uEnv.txt
+- F:\K1Plus\reference\nanopi-k1-plus-running.dts
+
+Conclusion:
+
+No local mature H5 reference provides a consistent explicit CMA value for this
+board. The current runtime failure shows CmaTotal is 0 KiB and DRM fbdev
+allocation fails, so the project needs an explicit small CMA allocation.

@@ -38,10 +38,18 @@ require_grep() {
 	record "$3=PASS"
 }
 
+require_silent_grep() {
+	grep -Eq "$2" "$1" || fail "$3"
+}
+
 require_config() {
 	config_line=$(grep -E "^$1=(y|m)$" "$ARTIFACT_DIR/kernel.config" || true)
 	[ -n "$config_line" ] || fail "$1"
 	record "$config_line"
+}
+
+require_kernel_config_line() {
+	grep -Eq "^$1$" "$ARTIFACT_DIR/kernel.config" || fail "$2"
 }
 
 require_manifest_pkg() {
@@ -116,14 +124,66 @@ require_config CONFIG_VT_CONSOLE
 require_config CONFIG_USB_HID
 require_config CONFIG_HID_GENERIC
 require_config CONFIG_INPUT_EVDEV
+require_config CONFIG_PINCTRL_SUN8I_H3_R
+require_config CONFIG_CMA
+require_config CONFIG_DMA_CMA
+require_config CONFIG_CPUFREQ_DT
+require_config CONFIG_REGULATOR_SY8106A
+require_kernel_config_line 'CONFIG_CMA_SIZE_MBYTES=64' "CMA_SIZE"
+
+require_silent_grep "$ARTIFACT_DIR/sun50i-h5-nanopi-k1-plus.compiled.dts" 'pinctrl@1f02c00' "R_PIO_DTS"
+require_silent_grep "$ARTIFACT_DIR/sun50i-h5-nanopi-k1-plus.compiled.dts" 'allwinner,sun8i-h3-r-pinctrl' "R_PIO_DTS"
+record "R_PIO_VERIFY=PASS"
+
+for pin in PL2 PL3 PL7 PL10; do
+	require_silent_grep "$ARTIFACT_DIR/sun50i-h5-nanopi-k1-plus.compiled.dts" "pins = \"$pin\"" "PL_GPIO_$pin"
+done
+record "PL_GPIO_VERIFY=PASS"
+
+for pattern in \
+	'mmc@1c10000' \
+	'mmc-pwrseq' \
+	'non-removable' \
+	'keep-power-in-suspend' \
+	'cap-sdio-irq' \
+	'sdio_wifi@1'; do
+	require_silent_grep "$ARTIFACT_DIR/sun50i-h5-nanopi-k1-plus.compiled.dts" "$pattern" "WIFI_SDIO_DTS"
+done
+record "WIFI_SDIO_DTS_VERIFY=PASS"
+
+for pattern in \
+	'usb0-vbus' \
+	'usb0_vbus-supply' \
+	'phy@1c19400' \
+	'allwinner,sun8i-h3-usb-phy'; do
+	require_silent_grep "$ARTIFACT_DIR/sun50i-h5-nanopi-k1-plus.compiled.dts" "$pattern" "USB_VBUS_DTS"
+done
+record "USB_VBUS_DTS_VERIFY=PASS"
+
+for pattern in \
+	'i2c@1f02400' \
+	'pins = "PL0\\0PL1"' \
+	'silergy,sy8106a' \
+	'regulator@65'; do
+	require_silent_grep "$ARTIFACT_DIR/sun50i-h5-nanopi-k1-plus.compiled.dts" "$pattern" "R_I2C_DTS"
+done
+record "R_I2C_DTS_VERIFY=PASS"
+record "CPUFREQ_CONFIG_VERIFY=PASS"
+record "CMA_VERIFY=PASS"
+
+require_file "$ARTIFACT_DIR/k1-plus-mmc-cross-mount-policy" "MMC_CROSS_MOUNT_POLICY"
+require_silent_grep "$ARTIFACT_DIR/k1-plus-mmc-cross-mount-policy" "anon_mount='0'" "MMC_CROSS_MOUNT_POLICY"
+require_silent_grep "$ARTIFACT_DIR/k1-plus-mmc-cross-mount-policy" "auto_mount='0'" "MMC_CROSS_MOUNT_POLICY"
+record "MMC_CROSS_MOUNT_POLICY_VERIFY=PASS"
 
 if [ -n "$manifest" ]; then
 	require_grep "$manifest" '^kmod-usb-hid([[:space:]]|$)' "MANIFEST_KMOD_USB_HID"
 fi
 
 record_full "PROFILE=FULL"
-require_openwrt_config_line 'CONFIG_TARGET_ROOTFS_PARTSIZE=1024' "ROOTFS_PARTSIZE"
-record_full "ROOTFS_PARTSIZE=1024"
+require_openwrt_config_line 'CONFIG_TARGET_ROOTFS_PARTSIZE=4096' "ROOTFS_PARTSIZE"
+record "ROOTFS_PARTSIZE=4096"
+record_full "ROOTFS_PARTSIZE=4096"
 
 # Package names are from the Full validation artifact 29146205553
 # `enabled-packages.txt`.

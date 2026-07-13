@@ -138,7 +138,7 @@ check_base() {
 }
 
 check_full() {
-	require_value CONFIG_TARGET_ROOTFS_PARTSIZE 1024
+	require_value CONFIG_TARGET_ROOTFS_PARTSIZE 4096
 	for symbol in \
 		CONFIG_PACKAGE_luci-ssl-openssl \
 		CONFIG_PACKAGE_luci-i18n-base-zh-cn \

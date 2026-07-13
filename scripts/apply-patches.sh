@@ -13,7 +13,8 @@ echo "STAGED 001-add-k1-plus-dts.patch as Linux 6.18 patch 950"
 for patch in \
 	"$PATCH_DIR/002-add-k1-plus-device-profile.patch" \
 	"$PATCH_DIR/003-add-k1-plus-network.patch" \
-	"$PATCH_DIR/004-add-stage-a-console-support.patch"; do
+	"$PATCH_DIR/004-add-stage-a-console-support.patch" \
+	"$PATCH_DIR/006-restore-k1-plus-hardware-foundation.patch"; do
 	[ -f "$patch" ] || { echo "missing patch: $patch" >&2; exit 1; }
 	git -C "$SOURCE_DIR" apply --check "$patch"
 	git -C "$SOURCE_DIR" apply "$patch"

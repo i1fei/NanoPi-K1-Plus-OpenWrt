@@ -1,0 +1,32 @@
+FriendlyCore CMA:
+NOT FOUND
+
+FriendlyCore Boot CMA:
+NOT FOUND
+
+FriendlyCore Reserved Memory:
+NOT FOUND
+
+Sources checked:
+
+- F:\K1Plus\reference\official-images\friendlycore-xenial_4.14_arm64\boot-extracted\boot.cmd
+- F:\K1Plus\reference\official-images\friendlycore-xenial_4.14_arm64\boot-extracted\uEnv.txt
+- F:\K1Plus\reference\official-images\friendlycore-xenial_4.14_arm64\boot-dtb-extracted\SUN50I~1.DTB
+- F:\K1Plus\reference\official-images\friendlycore-xenial_4.14_arm64\boot.img
+
+Search terms:
+
+- CONFIG_CMA
+- CONFIG_DMA_CMA
+- CONFIG_CMA_SIZE_MBYTES
+- cma=
+- linux,cma
+- shared-dma-pool
+- reserved-memory
+- coherent_pool
+
+Notes:
+
+The official FriendlyCore boot script and uEnv.txt do not set a CMA boot
+argument. The extracted K1 Plus DTB string scan did not expose reserved-memory,
+linux,cma, shared-dma-pool, or cma markers. No official CMA value is claimed.

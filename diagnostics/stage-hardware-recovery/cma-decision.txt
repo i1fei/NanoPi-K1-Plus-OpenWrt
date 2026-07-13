@@ -1,0 +1,6 @@
+RAM_TOTAL_MIB=2048
+OFFICIAL_CMA_MIB=NOT_FOUND
+REFERENCE_CMA_MIB=NOT_FOUND
+SELECTED_CMA_MIB=64
+SELECTED_METHOD=NO_OFFICIAL_CMA_FOUND_USE_64_MIB
+RATIONALE=The board has 2 GiB RAM. FriendlyCore and local H5 references did not expose an explicit CMA value, while the current runtime reports CmaTotal 0 KiB and DRM fbdev allocation failure. The task rule selects 64 MiB when no official value is found, and this stays below the 128 MiB ceiling.

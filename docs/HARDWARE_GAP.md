@@ -13,6 +13,28 @@ software-only package work, and items that require DTS or kernel work.
 | LuCI | PASS | Web UI access was confirmed by the user. |
 | HDMI output | FAIL | System boots, but there is no HDMI display output. |
 
+## Integrated Hardware Recovery Candidate
+
+The next candidate keeps the Full Profile software package set frozen and
+changes only hardware foundation, rootfs size, and default mount policy.
+
+| Item | Candidate Status | Runtime Status |
+| --- | --- | --- |
+| Full RootFS | 4096 MiB | UNTESTED |
+| R_PIO | FIX PREPARED | UNTESTED |
+| Wi-Fi SDIO / RTL8189ES hardware path | FIX PREPARED | UNTESTED |
+| USB VBUS / PHY / Host | FIX PREPARED | UNTESTED |
+| Power LED | FIX PREPARED | UNTESTED |
+| GPIO Button | FIX PREPARED | UNTESTED |
+| R_I2C / SY8106A | FIX PREPARED | UNTESTED |
+| CPUFreq | FIX PREPARED | UNTESTED |
+| HDMI CMA | FIX PREPARED | UNTESTED |
+| MicroSD / eMMC cross automount | DISABLED BY DEFAULT | UNTESTED |
+
+The candidate must not be treated as hardware PASS until a fresh MicroSD boot
+runtime report confirms it. HDMI remains `FAIL / NO OUTPUT` until real display
+output is observed.
+
 ## B. Compiled But Not Verified On Hardware
 
 | Item | Status | Notes |
@@ -91,6 +113,7 @@ eMMC rule:
 - Automatic flashing is forbidden.
 - eFlasher-style automatic disk write logic must not be added to this project
   baseline.
+- The running system must not automatically mount the other MMC system medium.
 
 ## F. Not Recommended For Base Image
 

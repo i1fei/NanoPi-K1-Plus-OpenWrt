@@ -67,6 +67,9 @@ done
 	cp "$SOURCE_DIR/package/boot/uboot-sunxi/uEnv-a64.txt" "$ARTIFACT_DIR/uEnv-a64.txt"
 [ -f "$SOURCE_DIR/target/linux/sunxi/base-files/etc/inittab" ] &&
 	cp "$SOURCE_DIR/target/linux/sunxi/base-files/etc/inittab" "$ARTIFACT_DIR/sunxi-inittab"
+[ -f "$SOURCE_DIR/target/linux/sunxi/base-files/etc/uci-defaults/99-k1-plus-mmc-cross-mount-policy" ] &&
+	cp "$SOURCE_DIR/target/linux/sunxi/base-files/etc/uci-defaults/99-k1-plus-mmc-cross-mount-policy" \
+		"$ARTIFACT_DIR/k1-plus-mmc-cross-mount-policy"
 
 manifest=$(
 	find "$IMAGE_DIR" -maxdepth 2 -type f -name 'packages.manifest' -print |
