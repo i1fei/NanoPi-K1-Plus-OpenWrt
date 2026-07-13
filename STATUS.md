@@ -428,3 +428,79 @@ Resolution:
 
 The new-file hunk now declares the actual K1 Plus DTS line count. No hardware
 nodes were changed by this fix.
+
+## Integrated Hardware Recovery build success
+
+Successful run:
+
+29227939683
+
+Commit:
+
+b864eb9410b20efb29999949e979767ce3225a69
+
+Conclusion:
+
+SUCCESS
+
+Artifact:
+
+NanoPi-K1-Plus-OpenWrt
+
+Local artifact path:
+
+F:\K1Plus\artifacts\stage-hardware-recovery-29227939683
+
+Recommended MicroSD image:
+
+NanoPi-K1-Plus-sunxi-cortexa53.img.gz
+
+Recommended image SHA256:
+
+fd696d0257ce44ad7f9787c2fcb8b2da494f359b40c9ab9da85216d16ffb3ca8
+
+Full Profile:
+
+FROZEN
+
+RootFS:
+
+4096 MiB
+
+CMA:
+
+64 MiB
+
+Validation:
+
+BUILD PASS
+
+IMAGE GZIP PASS
+
+STAGE A DISPLAY PASS
+
+FULL PROFILE PASS
+
+Hardware recovery build checks:
+
+R_PIO PASS
+
+Wi-Fi SDIO PASS
+
+USB VBUS / PHY PASS
+
+Power LED PASS
+
+SW4 Button PASS
+
+R_I2C / SY8106A PASS
+
+CPUFreq PASS
+
+HDMI CMA PASS
+
+MMC cross automount disabled PASS
+
+eMMC:
+
+NOT WRITTEN
