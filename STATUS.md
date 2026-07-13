@@ -412,3 +412,19 @@ Resolution:
 
 `&r_i2c` now explicitly declares one address cell and zero size cells before
 the SY8106A child regulator node.
+
+## Integrated Hardware Recovery DTS patch fix
+
+Failed run:
+
+29224841061
+
+Failure:
+
+The K1 Plus DTS patch hunk still declared `+1,262` even though the DTS file had
+grown beyond that size. The generated DTS was truncated during kernel patching.
+
+Resolution:
+
+The new-file hunk now declares the actual K1 Plus DTS line count. No hardware
+nodes were changed by this fix.
