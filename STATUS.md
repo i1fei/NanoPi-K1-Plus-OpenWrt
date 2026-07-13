@@ -397,3 +397,18 @@ NOT WRITTEN
 Workflow:
 
 PENDING
+
+## Integrated Hardware Recovery CI fix
+
+Failed run:
+
+29221599978
+
+Failure:
+
+K1 Plus DTS failed to compile at `reg_vdd_cpux` under `&r_i2c`.
+
+Resolution:
+
+`&r_i2c` now explicitly declares one address cell and zero size cells before
+the SY8106A child regulator node.

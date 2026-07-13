@@ -288,6 +288,8 @@ index 000000000000..111111111111
 +};
 +
 +&r_i2c {
++	#address-cells = <1>;
++	#size-cells = <0>;
 +	clock-frequency = <100000>;
 +	status = "okay";
 +
