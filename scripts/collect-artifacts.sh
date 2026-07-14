@@ -70,6 +70,12 @@ done
 [ -f "$SOURCE_DIR/target/linux/sunxi/base-files/etc/uci-defaults/99-k1-plus-mmc-cross-mount-policy" ] &&
 	cp "$SOURCE_DIR/target/linux/sunxi/base-files/etc/uci-defaults/99-k1-plus-mmc-cross-mount-policy" \
 		"$ARTIFACT_DIR/k1-plus-mmc-cross-mount-policy"
+[ -f "$SOURCE_DIR/target/linux/sunxi/base-files/etc/uci-defaults/98-k1-plus-rtl8189es-radio" ] &&
+	cp "$SOURCE_DIR/target/linux/sunxi/base-files/etc/uci-defaults/98-k1-plus-rtl8189es-radio" \
+		"$ARTIFACT_DIR/k1-plus-rtl8189es-radio-policy"
+[ -f "$SOURCE_DIR/package/kernel/rtl8189es/files/50_rtl-wifi" ] &&
+	cp "$SOURCE_DIR/package/kernel/rtl8189es/files/50_rtl-wifi" \
+		"$ARTIFACT_DIR/rtl8189es-uci-defaults-50_rtl-wifi"
 
 manifest=$(
 	find "$IMAGE_DIR" -maxdepth 2 -type f -name 'packages.manifest' -print |

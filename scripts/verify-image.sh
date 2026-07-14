@@ -151,6 +151,24 @@ for pattern in \
 done
 record "WIFI_SDIO_DTS_VERIFY=PASS"
 
+require_file "$ARTIFACT_DIR/k1-plus-rtl8189es-radio-policy" "RTL8189ES_RADIO_POLICY"
+for pattern in \
+	'friendlyelec,nanopi-k1-plus' \
+	'/sys/class/ieee80211' \
+	'1c10000\.mmc' \
+	'wireless\.radio0\.path' \
+	"wireless\.radio0\.disabled='1'" \
+	"wireless\.default_radio0\.disabled='1'"; do
+	require_silent_grep "$ARTIFACT_DIR/k1-plus-rtl8189es-radio-policy" "$pattern" "RTL8189ES_RADIO_POLICY"
+done
+record "RTL8189ES_RADIO_POLICY_VERIFY=PASS"
+
+require_file "$ARTIFACT_DIR/rtl8189es-uci-defaults-50_rtl-wifi" "RTL8189ES_DEFAULT_SCRIPT"
+if grep -Eq 'sed -i|ip link set dev wlan0 up' "$ARTIFACT_DIR/rtl8189es-uci-defaults-50_rtl-wifi"; then
+	fail "RTL8189ES_DEFAULT_SCRIPT"
+fi
+record "RTL8189ES_DEFAULT_SCRIPT_VERIFY=PASS"
+
 for pattern in \
 	'usb0-vbus' \
 	'usb0_vbus-supply' \

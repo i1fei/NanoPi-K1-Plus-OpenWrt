@@ -1,0 +1,143 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: NanoPi K1 Plus OpenWrt project <noreply@example.invalid>
+Date: Tue, 14 Jul 2026 00:00:00 +0800
+Subject: [PATCH] rtl8189es: stabilize K1 Plus radio discovery
+
+The rtl8189es package default script mutates netifd's mac80211 helper and
+force-raises wlan0 before board-specific wireless state is known.  On K1 Plus
+that can leave netifd and LuCI chasing stale radio sections while the display
+console receives repeated txpower errors.
+
+Keep the package default inert and let K1 Plus create one disabled radio0
+section bound to the real SDIO PHY path after kmodloader has made the rtl8189es
+PHY visible.
+
+---
+ package/kernel/rtl8189es/files/50_rtl-wifi       |   4 +-
+ .../uci-defaults/98-k1-plus-rtl8189es-radio      | 102 ++++++++++++++++++++++
+ 2 files changed, 104 insertions(+), 2 deletions(-)
+ create mode 100755 target/linux/sunxi/base-files/etc/uci-defaults/98-k1-plus-rtl8189es-radio
+
+diff --git a/package/kernel/rtl8189es/files/50_rtl-wifi b/package/kernel/rtl8189es/files/50_rtl-wifi
+index 111111111111..222222222222 100644
+--- a/package/kernel/rtl8189es/files/50_rtl-wifi
++++ b/package/kernel/rtl8189es/files/50_rtl-wifi
+@@ -1,6 +1,6 @@
+ #!/bin/sh
+-
+-sed -i '/iw dev "$wdev" del/d' /lib/netifd/wireless/mac80211.sh
+-ip link set dev wlan0 up
+-
++
++# NanoPi K1 Plus owns rtl8189es setup from a board uci-defaults script.
++# Do not patch netifd or force wlan0 up from the kernel package default.
++
+ exit 0
+diff --git a/target/linux/sunxi/base-files/etc/uci-defaults/98-k1-plus-rtl8189es-radio b/target/linux/sunxi/base-files/etc/uci-defaults/98-k1-plus-rtl8189es-radio
+new file mode 100755
+index 000000000000..111111111111
+--- /dev/null
++++ b/target/linux/sunxi/base-files/etc/uci-defaults/98-k1-plus-rtl8189es-radio
+@@ -0,0 +1,102 @@
++#!/bin/sh
++
++. /lib/functions.sh
++
++[ "$(board_name)" = "friendlyelec,nanopi-k1-plus" ] || exit 0
++
++find_k1_phy() {
++	local count devpath found phy_dir phy
++
++	for phy_dir in /sys/class/ieee80211/*; do
++		[ -d "$phy_dir" ] || continue
++		phy="${phy_dir##*/}"
++		devpath="$(readlink -f "$phy_dir/device" 2>/dev/null || true)"
++		case "$devpath" in
++			*1c10000.mmc*|*mmc1:0001*)
++				echo "$phy"
++				return 0
++				;;
++		esac
++	done
++
++	count=0
++	found=
++	for phy_dir in /sys/class/ieee80211/*; do
++		[ -d "$phy_dir" ] || continue
++		count=$((count + 1))
++		found="${phy_dir##*/}"
++	done
++
++	[ "$count" -eq 1 ] || return 1
++	echo "$found"
++}
++
++delete_wifi_device() {
++	local section="$1"
++
++	uci -q delete "wireless.$section"
++}
++
++delete_wifi_iface() {
++	local section="$1"
++
++	uci -q delete "wireless.$section"
++}
++
++phy=
++for _ in 1 2 3 4 5; do
++	phy="$(find_k1_phy || true)"
++	[ -n "$phy" ] && break
++	sleep 1
++done
++
++if [ -z "$phy" ]; then
++	logger -t k1-plus-radio "no single rtl8189es phy found; wireless config unchanged"
++	exit 0
++fi
++
++devpath="$(readlink -f "/sys/class/ieee80211/$phy/device" 2>/dev/null || true)"
++if [ -z "$devpath" ]; then
++	logger -t k1-plus-radio "missing device path for $phy; wireless config unchanged"
++	exit 0
++fi
++
++case "$devpath" in
++	*1c10000.mmc/*)
++		radio_path="1c10000.mmc/${devpath##*1c10000.mmc/}"
++		;;
++	*1c10000.mmc)
++		radio_path="1c10000.mmc"
++		;;
++	/sys/devices/*)
++		radio_path="${devpath#/sys/devices/}"
++		;;
++	*)
++		radio_path="$devpath"
++		;;
++esac
++
++config_load wireless
++config_foreach delete_wifi_iface wifi-iface
++config_foreach delete_wifi_device wifi-device
++
++uci -q batch <<EOF
++set wireless.radio0='wifi-device'
++set wireless.radio0.type='mac80211'
++set wireless.radio0.path='$radio_path'
++set wireless.radio0.band='2g'
++set wireless.radio0.channel='auto'
++set wireless.radio0.htmode='HT20'
++set wireless.radio0.disabled='1'
++set wireless.default_radio0='wifi-iface'
++set wireless.default_radio0.device='radio0'
++set wireless.default_radio0.network='lan'
++set wireless.default_radio0.mode='ap'
++set wireless.default_radio0.ssid='NanoPi-K1-Plus'
++set wireless.default_radio0.encryption='none'
++set wireless.default_radio0.disabled='1'
++commit wireless
++EOF
++
++logger -t k1-plus-radio "locked radio0 to $phy at $radio_path"
++exit 0

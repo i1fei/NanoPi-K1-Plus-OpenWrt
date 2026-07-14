@@ -504,3 +504,34 @@ MMC cross automount disabled PASS
 eMMC:
 
 NOT WRITTEN
+
+## K1 Plus rtl8189es radio stabilization
+
+Problem:
+
+The rtl8189es package default script patched netifd's mac80211 helper and
+forced `wlan0` up before K1 Plus had one stable board-owned wireless config.
+
+Effect:
+
+Ghost or stale radio sections could keep netifd busy, make LuCI wireless pages
+stall, and flood the HDMI console with repeated txpower errors.
+
+Resolution:
+
+The package default script is now inert.
+
+K1 Plus creates exactly one disabled `radio0` after the real rtl8189es PHY is
+visible.
+
+PHY mapping:
+
+Stable SDIO device path from `/sys/class/ieee80211`.
+
+Stage A HDMI / TTL / Framebuffer:
+
+UNCHANGED
+
+Next:
+
+Build and verify the updated recovery image.
