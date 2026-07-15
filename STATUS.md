@@ -535,3 +535,28 @@ UNCHANGED
 Next:
 
 Build and verify the updated recovery image.
+
+## K1 Plus runtime radio generation fix
+
+Observed on hardware:
+
+The real board exposed one `phy0`, but runtime wireless config still grew
+multiple `radio*` sections with mismatched MMC paths.
+
+Root cause:
+
+`wifi config` could append another mac80211 section instead of collapsing K1
+Plus back to one board-owned radio.
+
+Resolution:
+
+The shared `mac80211.uc` generator now resets K1 Plus wireless config to one
+real radio before emitting a new section.
+
+Runtime target:
+
+One real rtl8189es radio, one stable PHY path, no ghost radios.
+
+Next:
+
+Rebuild the SD card image and recheck the live board.

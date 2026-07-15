@@ -76,6 +76,9 @@ done
 [ -f "$SOURCE_DIR/package/kernel/rtl8189es/files/50_rtl-wifi" ] &&
 	cp "$SOURCE_DIR/package/kernel/rtl8189es/files/50_rtl-wifi" \
 		"$ARTIFACT_DIR/rtl8189es-uci-defaults-50_rtl-wifi"
+[ -f "$SOURCE_DIR/package/network/config/wifi-scripts/files/lib/wifi/mac80211.uc" ] &&
+	cp "$SOURCE_DIR/package/network/config/wifi-scripts/files/lib/wifi/mac80211.uc" \
+		"$ARTIFACT_DIR/k1-plus-mac80211-config-generator.uc"
 
 manifest=$(
 	find "$IMAGE_DIR" -maxdepth 2 -type f -name 'packages.manifest' -print |

@@ -169,6 +169,18 @@ if grep -Eq 'sed -i|ip link set dev wlan0 up' "$ARTIFACT_DIR/rtl8189es-uci-defau
 fi
 record "RTL8189ES_DEFAULT_SCRIPT_VERIFY=PASS"
 
+require_file "$ARTIFACT_DIR/k1-plus-mac80211-config-generator.uc" "K1_MAC80211_GENERATOR"
+for pattern in \
+	'friendlyelec,nanopi-k1-plus' \
+	'reset_k1_wireless_config' \
+	'delete wireless\.' \
+	'k1_radio_seen = true' \
+	'NanoPi-K1-Plus' \
+	"disabled='\\$\\{is_k1_plus \\? \"1\" : \"0\"\\}'"; do
+	require_silent_grep "$ARTIFACT_DIR/k1-plus-mac80211-config-generator.uc" "$pattern" "K1_MAC80211_GENERATOR"
+done
+record "K1_MAC80211_GENERATOR_VERIFY=PASS"
+
 for pattern in \
 	'usb0-vbus' \
 	'usb0_vbus-supply' \

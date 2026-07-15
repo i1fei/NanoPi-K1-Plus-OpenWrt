@@ -1,0 +1,57 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: NanoPi K1 Plus OpenWrt project <noreply@example.invalid>
+Date: Tue, 15 Jul 2026 00:00:00 +0800
+Subject: [PATCH] wifi-scripts: keep K1 Plus on one real rtl8189es radio
+
+The runtime wifi config generator may append another radio section whenever it
+sees a stale or mismatched K1 Plus wireless config. On the real board that
+turns one rtl8189es PHY into ghost radio sections, leaves netifd retrying
+setup, and keeps the console noisy with txpower warnings.
+
+Teach the shared mac80211 config generator to collapse K1 Plus back to one
+board-owned radio every time wifi config runs. This makes hotplug and manual
+reconfiguration idempotent instead of appending more ghost sections.
+
+---
+ .../network/config/wifi-scripts/files/lib/wifi/mac80211.uc | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/package/network/config/wifi-scripts/files/lib/wifi/mac80211.uc b/package/network/config/wifi-scripts/files/lib/wifi/mac80211.uc
+index 111111111111..222222222222 100644
+--- a/package/network/config/wifi-scripts/files/lib/wifi/mac80211.uc
++++ b/package/network/config/wifi-scripts/files/lib/wifi/mac80211.uc
+@@ -11,0 +12 @@ if (!board.wlan)
++let is_k1_plus = board.model && board.model.id == "friendlyelec,nanopi-k1-plus";
+@@ -13,0 +15 @@ let commit;
++let k1_radio_seen = false;
+@@ -16,0 +19,14 @@ let config = uci.cursor().get_all("wireless") ?? {};
++function reset_k1_wireless_config() {
++	for (let name, s in config) {
++		switch (s[".type"]) {
++		case "wifi-device":
++		case "wifi-iface":
++			print(`delete wireless.${name}\n`);
++			delete config[name];
++			break;
++		}
++	}
++
++	idx = 0;
++}
++
+@@ -37,0 +54,2 @@ for (let phy_name, phy in board.wlan) {
++	if (is_k1_plus && k1_radio_seen)
++		continue;
+@@ -74,0 +93,3 @@ for (let phy_name, phy in board.wlan) {
++		if (is_k1_plus && !k1_radio_seen)
++			reset_k1_wireless_config();
++
+@@ -112 +133 @@ set ${si}.mode='ap'
+-set ${si}.ssid='${defaults?.ssid || "ImmortalWrt"}'
++set ${si}.ssid='${defaults?.ssid || (is_k1_plus ? "NanoPi-K1-Plus" : "ImmortalWrt")}'
+@@ -115 +136 @@ set ${si}.key='${defaults?.key || ""}'
+-set ${si}.disabled='0'
++set ${si}.disabled='${is_k1_plus ? "1" : "0"}'
+@@ -118,0 +140,2 @@ set ${si}.disabled='0'
++		if (is_k1_plus)
++			k1_radio_seen = true;
