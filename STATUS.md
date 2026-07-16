@@ -567,3 +567,27 @@ One real rtl8189es radio, one stable PHY path, no ghost radios.
 Next:
 
 Rebuild the SD card image and recheck the live board.
+
+## K1 Plus rtl8189es built-in wlan0 preservation
+
+Observed on hardware:
+
+The rebuilt image could collapse wireless config to one disabled `radio0`, but
+the console still showed rtl8189es virtual interface churn and `eth0` remained
+unusable from first boot.
+
+Root cause:
+
+The previous radio fix made `50_rtl-wifi` fully inert. On the modern wifi
+stack, the old `sed` hack is obsolete, but raising the driver-owned `wlan0`
+still matters. If `wlan0` stays down, the shared `wdev` helper can treat it as
+removable state during empty-radio setup.
+
+Resolution:
+
+Restore only the K1 Plus compatible part of `50_rtl-wifi`: keep `wlan0` up
+early, without reintroducing the legacy netifd script mutation.
+
+Next:
+
+Rebuild the SD card image and recheck first-boot network bring-up.
