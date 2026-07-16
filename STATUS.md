@@ -553,6 +553,13 @@ Resolution:
 The shared `mac80211.uc` generator now resets K1 Plus wireless config to one
 real radio before emitting a new section.
 
+Live validation on July 16, 2026:
+
+The first implementation reset stale radios too late. A leftover matching
+section could still skip the cleanup path.
+
+The cleanup point was moved before radio name allocation and path matching.
+
 Runtime target:
 
 One real rtl8189es radio, one stable PHY path, no ghost radios.
