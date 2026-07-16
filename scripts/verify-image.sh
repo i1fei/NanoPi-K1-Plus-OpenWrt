@@ -164,9 +164,15 @@ done
 record "RTL8189ES_RADIO_POLICY_VERIFY=PASS"
 
 require_file "$ARTIFACT_DIR/rtl8189es-uci-defaults-50_rtl-wifi" "RTL8189ES_DEFAULT_SCRIPT"
-if grep -Eq 'sed -i|ip link set dev wlan0 up' "$ARTIFACT_DIR/rtl8189es-uci-defaults-50_rtl-wifi"; then
+if grep -Eq 'sed -i' "$ARTIFACT_DIR/rtl8189es-uci-defaults-50_rtl-wifi"; then
 	fail "RTL8189ES_DEFAULT_SCRIPT"
 fi
+for pattern in \
+	'friendlyelec,nanopi-k1-plus' \
+	'ip link show dev wlan0' \
+	'ip link set dev wlan0 up'; do
+	require_silent_grep "$ARTIFACT_DIR/rtl8189es-uci-defaults-50_rtl-wifi" "$pattern" "RTL8189ES_DEFAULT_SCRIPT"
+done
 record "RTL8189ES_DEFAULT_SCRIPT_VERIFY=PASS"
 
 require_file "$ARTIFACT_DIR/k1-plus-mac80211-config-generator.uc" "K1_MAC80211_GENERATOR"

@@ -591,3 +591,30 @@ early, without reintroducing the legacy netifd script mutation.
 Next:
 
 Rebuild the SD card image and recheck first-boot network bring-up.
+
+## K1 Plus rtl8189es validation sync
+
+Failed run:
+
+29481213396
+
+Failure:
+
+`Collect and verify image` rejected `rtl8189es-uci-defaults-50_rtl-wifi` as
+invalid.
+
+Root cause:
+
+The validation script still treated any `ip link set dev wlan0 up` line as a
+failure, but the current K1 Plus fix intentionally keeps that board-specific
+`wlan0` preservation step while continuing to forbid the old `sed` mutation of
+`mac80211.sh`.
+
+Resolution:
+
+`verify-image.sh` now rejects only the legacy `sed` hack and explicitly
+requires the K1 Plus board guard plus the `wlan0` keepalive lines.
+
+Next:
+
+Rebuild and re-run artifact verification.
