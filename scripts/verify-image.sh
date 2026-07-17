@@ -151,28 +151,10 @@ for pattern in \
 done
 record "WIFI_SDIO_DTS_VERIFY=PASS"
 
-require_file "$ARTIFACT_DIR/k1-plus-rtl8189es-radio-policy" "RTL8189ES_RADIO_POLICY"
-for pattern in \
-	'friendlyelec,nanopi-k1-plus' \
-	'/sys/class/ieee80211' \
-	'1c10000\.mmc' \
-	'wireless\.radio0\.path' \
-	"wireless\.radio0\.disabled='1'" \
-	"wireless\.default_radio0\.disabled='1'"; do
-	require_silent_grep "$ARTIFACT_DIR/k1-plus-rtl8189es-radio-policy" "$pattern" "RTL8189ES_RADIO_POLICY"
-done
-record "RTL8189ES_RADIO_POLICY_VERIFY=PASS"
-
 require_file "$ARTIFACT_DIR/rtl8189es-uci-defaults-50_rtl-wifi" "RTL8189ES_DEFAULT_SCRIPT"
-if grep -Eq 'sed -i' "$ARTIFACT_DIR/rtl8189es-uci-defaults-50_rtl-wifi"; then
+if grep -Eq 'sed -i|ip link set dev wlan0 up|ip link show dev wlan0' "$ARTIFACT_DIR/rtl8189es-uci-defaults-50_rtl-wifi"; then
 	fail "RTL8189ES_DEFAULT_SCRIPT"
 fi
-for pattern in \
-	'friendlyelec,nanopi-k1-plus' \
-	'ip link show dev wlan0' \
-	'ip link set dev wlan0 up'; do
-	require_silent_grep "$ARTIFACT_DIR/rtl8189es-uci-defaults-50_rtl-wifi" "$pattern" "RTL8189ES_DEFAULT_SCRIPT"
-done
 record "RTL8189ES_DEFAULT_SCRIPT_VERIFY=PASS"
 
 require_file "$ARTIFACT_DIR/k1-plus-mac80211-config-generator.uc" "K1_MAC80211_GENERATOR"
@@ -182,7 +164,7 @@ for pattern in \
 	'delete wireless\.' \
 	'k1_radio_seen = true' \
 	'NanoPi-K1-Plus' \
-	"disabled='\\$\\{is_k1_plus \\? \"1\" : \"0\"\\}'"; do
+	"disabled='0'"; do
 	require_silent_grep "$ARTIFACT_DIR/k1-plus-mac80211-config-generator.uc" "$pattern" "K1_MAC80211_GENERATOR"
 done
 record "K1_MAC80211_GENERATOR_VERIFY=PASS"

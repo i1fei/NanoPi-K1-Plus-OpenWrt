@@ -618,3 +618,36 @@ requires the K1 Plus board guard plus the `wlan0` keepalive lines.
 Next:
 
 Rebuild and re-run artifact verification.
+
+## K1 Plus first-boot radio reset rollback
+
+Observed on hardware on July 17, 2026:
+
+With the image built from run `29489690019`, the first reboot still showed
+rtl8189es `wlan0`/`wlan1` churn, no usable Wi-Fi AP, and no reachable
+`192.168.1.1`. After a second reboot, LAN recovered but Wi-Fi was still not in
+a healthy default state.
+
+Root cause:
+
+The previous recovery path over-corrected in two ways:
+
+1. `98-k1-plus-rtl8189es-radio` rewrote wireless config during first boot after
+   the ieee80211 hotplug path had already generated config.
+2. K1 Plus default wireless config was still emitted with the AP disabled,
+   which turned first boot into a recovery dance instead of a normal router
+   bring-up.
+
+Resolution:
+
+The rtl8189es package default is inert again.
+
+K1 Plus radio creation returns to the shared `mac80211.uc` generator, which
+still collapses to one real radio but now keeps the default AP enabled on first
+boot.
+
+Validation rules were updated to match that rollback.
+
+Next:
+
+Rebuild and retest first-boot LAN and Wi-Fi bring-up on hardware.
