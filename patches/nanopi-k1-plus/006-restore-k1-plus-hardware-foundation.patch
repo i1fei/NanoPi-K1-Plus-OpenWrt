@@ -1,0 +1,77 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: NanoPi K1 Plus OpenWrt project <noreply@example.invalid>
+Date: Mon, 13 Jul 2026 00:00:00 +0800
+Subject: [PATCH] sunxi: restore K1 Plus hardware foundation and isolate boot media
+
+Enable the H5 R_PIO controller required by PL GPIO consumers and provide a
+small fixed CMA pool for DRM fbdev allocation.  Keep dual MMC media visible,
+but disable anonymous block auto-mounting for K1 Plus so a MicroSD boot does
+not automatically mount and write the eMMC system.
+
+---
+ .../etc/uci-defaults/99-k1-plus-mmc-cross-mount-policy | 17 +++++++++++++++++
+ target/linux/sunxi/cortexa53/config-6.18               | 13 +++++++++++++
+ 2 files changed, 30 insertions(+)
+ create mode 100755 target/linux/sunxi/base-files/etc/uci-defaults/99-k1-plus-mmc-cross-mount-policy
+
+diff --git a/target/linux/sunxi/base-files/etc/uci-defaults/99-k1-plus-mmc-cross-mount-policy b/target/linux/sunxi/base-files/etc/uci-defaults/99-k1-plus-mmc-cross-mount-policy
+new file mode 100755
+index 000000000000..111111111111
+--- /dev/null
++++ b/target/linux/sunxi/base-files/etc/uci-defaults/99-k1-plus-mmc-cross-mount-policy
+@@ -0,0 +1,17 @@
++#!/bin/sh
++
++. /lib/functions.sh
++
++[ "$(board_name)" = "friendlyelec,nanopi-k1-plus" ] || exit 0
++
++if [ ! -f /etc/config/fstab ]; then
++	block detect > /etc/config/fstab
++fi
++
++uci -q set fstab.@global[0].anon_mount='0'
++uci -q set fstab.@global[0].auto_mount='0'
++uci -q commit fstab
++
++logger -t k1-plus "disabled anonymous MMC/USB block auto-mount"
++
++exit 0
+diff --git a/target/linux/sunxi/cortexa53/config-6.18 b/target/linux/sunxi/cortexa53/config-6.18
+index 444444444444..555555555555 100644
+--- a/target/linux/sunxi/cortexa53/config-6.18
++++ b/target/linux/sunxi/cortexa53/config-6.18
+@@ -46,5 +46,16 @@ CONFIG_DMA_NEED_SYNC=y
+ CONFIG_DWMAC_SUN55I=y
+ CONFIG_DWMAC_SUN8I=y
++CONFIG_CMA=y
++CONFIG_CMA_ALIGNMENT=8
++CONFIG_CMA_AREAS=7
++# CONFIG_CMA_DEBUG is not set
++# CONFIG_CMA_DEBUGFS is not set
++CONFIG_CMA_SIZE_MBYTES=64
++# CONFIG_CMA_SIZE_SEL_MAX is not set
++CONFIG_CMA_SIZE_SEL_MBYTES=y
++# CONFIG_CMA_SIZE_SEL_MIN is not set
++# CONFIG_CMA_SIZE_SEL_PERCENTAGE is not set
++# CONFIG_CMA_SYSFS is not set
+ CONFIG_DRM=y
+ CONFIG_DRM_CLIENT=y
+ CONFIG_DRM_CLIENT_DEFAULT="fbdev"
+@@ -161,7 +172,8 @@ CONFIG_PINCTRL_SUN50I_H616=y
+ CONFIG_PINCTRL_SUN50I_H616_R=y
+ CONFIG_PINCTRL_SUN50I_H6_R=y
+ CONFIG_PINCTRL_SUN55I_A523=y
+ CONFIG_PINCTRL_SUN55I_A523_R=y
++CONFIG_PINCTRL_SUN8I_H3_R=y
+ CONFIG_POSIX_CPU_TIMERS_TASK_WORK=y
+ CONFIG_QUEUED_RWLOCKS=y
+ CONFIG_QUEUED_SPINLOCKS=y
+@@ -203,6 +215,7 @@ CONFIG_USB_DWC3_DUAL_ROLE=y
+ # CONFIG_USB_DWC3_HOST is not set
+ # CONFIG_USB_DWC3_GADGET is not set
+ CONFIG_USB_MUSB_DUAL_ROLE=y
++CONFIG_DMA_CMA=y
+ CONFIG_USB_MUSB_HDRC=y
+ CONFIG_USB_MUSB_SUNXI=y
+ CONFIG_USB_PHY=y

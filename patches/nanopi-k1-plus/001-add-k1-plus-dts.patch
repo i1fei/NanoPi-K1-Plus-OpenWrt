@@ -1,0 +1,324 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: NanoPi K1 Plus OpenWrt project <noreply@example.invalid>
+Date: Fri, 10 Jul 2026 00:00:00 +0800
+Subject: [PATCH] arm64: dts: add FriendlyElec NanoPi K1 Plus
+
+The board DTS is based on the current public Armbian H5 board description
+and the locally observed board wiring.  The SDIO child is intentionally
+generic so the RTL8189ES SDIO driver binds by its real device ID; no Broadcom
+compatible or old Wi-Fi configuration is carried over.
+
+---
+ arch/arm64/boot/dts/allwinner/Makefile             |   1 +
+ .../boot/dts/allwinner/sun50i-h5-nanopi-k1-plus.dts | 290 ++++++++++++++++++
+ 2 files changed, 291 insertions(+)
+ create mode 100644 arch/arm64/boot/dts/allwinner/sun50i-h5-nanopi-k1-plus.dts
+
+diff --git a/arch/arm64/boot/dts/allwinner/Makefile b/arch/arm64/boot/dts/allwinner/Makefile
+index 111111111111..222222222222 100644
+--- a/arch/arm64/boot/dts/allwinner/Makefile
++++ b/arch/arm64/boot/dts/allwinner/Makefile
+@@ -29,6 +29,7 @@ dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h5-libretech-all-h5-cc.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h5-nanopi-neo2.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h5-nanopi-neo-plus2.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h5-nanopi-r1s-h5.dtb
++dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h5-nanopi-k1-plus.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h5-orangepi-pc2.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h5-orangepi-prime.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h5-orangepi-zero-plus.dtb
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h5-nanopi-k1-plus.dts b/arch/arm64/boot/dts/allwinner/sun50i-h5-nanopi-k1-plus.dts
+new file mode 100644
+index 000000000000..111111111111
+--- /dev/null
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h5-nanopi-k1-plus.dts
+@@ -0,0 +1,290 @@
++/*
++ * Copyright (C) 2016 ARM Ltd.
++ *
++ * This file is dual-licensed: you can use it either under the terms
++ * of the GPL or the X11 license, at your option.
++ */
++
++/dts-v1/;
++#include "sun50i-h5.dtsi"
++#include "sun50i-h5-cpu-opp.dtsi"
++
++#include <dt-bindings/gpio/gpio.h>
++#include <dt-bindings/input/input.h>
++#include <dt-bindings/pinctrl/sun4i-a10.h>
++
++/ {
++	model = "FriendlyElec NanoPi K1 Plus";
++	compatible = "friendlyelec,nanopi-k1-plus", "allwinner,sun50i-h5";
++
++	reg_vcc3v3: vcc3v3 {
++		compatible = "regulator-fixed";
++		regulator-name = "vcc3v3";
++		regulator-min-microvolt = <3300000>;
++		regulator-max-microvolt = <3300000>;
++	};
++
++	aliases {
++		ethernet0 = &emac;
++		serial0 = &uart0;
++	};
++
++	chosen {
++		stdout-path = "serial0:115200n8";
++	};
++
++	connector {
++		compatible = "hdmi-connector";
++		type = "a";
++
++		port {
++			hdmi_con_in: endpoint {
++				remote-endpoint = <&hdmi_out_con>;
++			};
++		};
++	};
++
++	leds {
++		compatible = "gpio-leds";
++		pinctrl-names = "default";
++		pinctrl-0 = <&pwr_led_pin>;
++
++		status {
++			label = "nanopi:green:status";
++			gpios = <&pio 0 10 GPIO_ACTIVE_HIGH>;
++			linux,default-trigger = "heartbeat";
++		};
++
++		pwr {
++			label = "nanopi:red:pwr";
++			gpios = <&r_pio 0 10 GPIO_ACTIVE_HIGH>;
++			default-state = "on";
++		};
++	};
++
++	r-gpio-keys {
++		compatible = "gpio-keys";
++		pinctrl-names = "default";
++		pinctrl-0 = <&sw4_pin>;
++
++		sw4 {
++			label = "sw4";
++			linux,code = <BTN_0>;
++			gpios = <&r_pio 0 3 GPIO_ACTIVE_LOW>;
++		};
++	};
++
++	reg_gmac_3v3: gmac-3v3 {
++		compatible = "regulator-fixed";
++		pinctrl-names = "default";
++		pinctrl-0 = <&gmac_power_pin_nanopi>;
++		regulator-name = "gmac-3v3";
++		regulator-min-microvolt = <3300000>;
++		regulator-max-microvolt = <3300000>;
++		startup-delay-us = <100000>;
++		enable-active-high;
++		gpio = <&pio 3 6 GPIO_ACTIVE_HIGH>;
++	};
++
++	reg_usb0_vbus: usb0-vbus {
++		compatible = "regulator-fixed";
++		pinctrl-names = "default";
++		pinctrl-0 = <&usb0_vbus_pin>;
++		regulator-name = "usb0-vbus";
++		regulator-min-microvolt = <5000000>;
++		regulator-max-microvolt = <5000000>;
++		enable-active-high;
++		gpio = <&r_pio 0 2 GPIO_ACTIVE_HIGH>;
++		status = "okay";
++	};
++
++	wifi_pwrseq: wifi_pwrseq {
++		compatible = "mmc-pwrseq-simple";
++		pinctrl-names = "default";
++		pinctrl-0 = <&wifi_en_npi>;
++		reset-gpios = <&r_pio 0 7 GPIO_ACTIVE_LOW>;
++		post-power-on-delay-ms = <200>;
++	};
++};
++
++&cpu0 {
++	cpu-supply = <&reg_vdd_cpux>;
++};
++
++&de {
++	status = "okay";
++};
++
++&ehci0 {
++	status = "okay";
++};
++
++&ehci1 {
++	status = "okay";
++};
++
++&ehci2 {
++	status = "okay";
++};
++
++&ehci3 {
++	status = "okay";
++};
++
++&external_mdio {
++	ext_rgmii_phy: ethernet-phy@1 {
++		compatible = "ethernet-phy-ieee802.3-c22";
++		reg = <0>;
++	};
++};
++
++&emac {
++	pinctrl-names = "default";
++	pinctrl-0 = <&emac_rgmii_pins>;
++	phy-supply = <&reg_gmac_3v3>;
++	phy-handle = <&ext_rgmii_phy>;
++	phy-mode = "rgmii-id";
++	allwinner,leds-active-low;
++	status = "okay";
++};
++
++&hdmi {
++	status = "okay";
++};
++
++&hdmi_out {
++	hdmi_out_con: endpoint {
++		remote-endpoint = <&hdmi_con_in>;
++	};
++};
++
++&mmc0 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&mmc0_pins>;
++	vmmc-supply = <&reg_vcc3v3>;
++	bus-width = <4>;
++	cd-gpios = <&pio 5 6 GPIO_ACTIVE_LOW>;
++	status = "okay";
++};
++
++&mmc1 {
++	vmmc-supply = <&reg_vcc3v3>;
++	vqmmc-supply = <&reg_vcc3v3>;
++	mmc-pwrseq = <&wifi_pwrseq>;
++	bus-width = <4>;
++	non-removable;
++	keep-power-in-suspend;
++	cap-sdio-irq;
++	status = "okay";
++
++	/* Bind by SDIO ID 024C:8179; do not identify this as Broadcom. */
++	sdio_wifi@1 {
++		reg = <1>;
++	};
++};
++
++&mmc2 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&mmc2_8bit_pins>;
++	vmmc-supply = <&reg_vcc3v3>;
++	vqmmc-supply = <&reg_vcc3v3>;
++	bus-width = <8>;
++	non-removable;
++	cap-mmc-hw-reset;
++	status = "okay";
++};
++
++&mmc2_8bit_pins {
++	drive-strength = <40>;
++	bias-pull-up;
++};
++
++&ohci0 {
++	status = "okay";
++};
++
++&ohci1 {
++	status = "okay";
++};
++
++&ohci2 {
++	status = "okay";
++};
++
++&ohci3 {
++	status = "okay";
++};
++
++&pio {
++	gmac_power_pin_nanopi: gmac_power_pin@0 {
++		pins = "PD6";
++		function = "gpio_out";
++	};
++};
++
++&r_pio {
++	status = "okay";
++
++	usb0_vbus_pin: usb0-vbus-pin {
++		pins = "PL2";
++		function = "gpio_out";
++	};
++
++	sw4_pin: sw4-pin {
++		pins = "PL3";
++		function = "gpio_in";
++	};
++
++	wifi_en_npi: wifi_en_pin {
++		pins = "PL7";
++		function = "gpio_out";
++	};
++
++	pwr_led_pin: pwr-led-pin {
++		pins = "PL10";
++		function = "gpio_out";
++	};
++
++	vdd_cpux_r_npi: regulator_pins@0 {
++		allwinner,pins = "PL6";
++		allwinner,function = "gpio_out";
++		allwinner,drive = <SUN4I_PINCTRL_10_MA>;
++		allwinner,pull = <SUN4I_PINCTRL_NO_PULL>;
++	};
++};
++
++&r_i2c {
++	#address-cells = <1>;
++	#size-cells = <0>;
++	clock-frequency = <100000>;
++	status = "okay";
++
++	reg_vdd_cpux: regulator@65 {
++		compatible = "silergy,sy8106a";
++		reg = <0x65>;
++		regulator-name = "vdd-cpux";
++		silergy,fixed-microvolt = <1200000>;
++		regulator-min-microvolt = <1000000>;
++		regulator-max-microvolt = <1400000>;
++		regulator-ramp-delay = <200>;
++		regulator-boot-on;
++		regulator-always-on;
++	};
++};
++
++&uart0 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&uart0_pa_pins>;
++	status = "okay";
++};
++
++&usb_otg {
++	dr_mode = "otg";
++	status = "okay";
++};
++
++&usbphy {
++	usb0_id_det-gpios = <&pio 6 12 GPIO_ACTIVE_HIGH>;
++	usb0_vbus-supply = <&reg_usb0_vbus>;
++	status = "okay";
++};

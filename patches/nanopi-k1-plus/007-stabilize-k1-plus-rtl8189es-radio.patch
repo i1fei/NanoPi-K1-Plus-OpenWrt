@@ -1,0 +1,32 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: NanoPi K1 Plus OpenWrt project <noreply@example.invalid>
+Date: Tue, 14 Jul 2026 00:00:00 +0800
+Subject: [PATCH] rtl8189es: keep K1 Plus package default inert
+
+The rtl8189es package default script still carries legacy behavior from older
+wifi stacks: it patches shell-based mac80211 setup and force-raises wlan0.
+On the current stack that makes K1 Plus first boot depend on a late
+board-specific uci-defaults rewrite, which in practice turns the initial boot
+sequence into a two-stage recovery dance.
+
+Keep the kernel package default inert again and let the shared wifi config
+generator own K1 Plus radio creation directly.
+
+---
+ package/kernel/rtl8189es/files/50_rtl-wifi | 7 +++----
+ 1 file changed, 3 insertions(+), 4 deletions(-)
+
+diff --git a/package/kernel/rtl8189es/files/50_rtl-wifi b/package/kernel/rtl8189es/files/50_rtl-wifi
+index 111111111111..222222222222 100644
+--- a/package/kernel/rtl8189es/files/50_rtl-wifi
++++ b/package/kernel/rtl8189es/files/50_rtl-wifi
+@@ -1,6 +1,5 @@
+ #!/bin/sh
+-
+-sed -i '/iw dev "$wdev" del/d' /lib/netifd/wireless/mac80211.sh
+-ip link set dev wlan0 up
+-
++
++# NanoPi K1 Plus relies on the shared wifi generator instead of package-local
++# rtl8189es boot mutations.
+ exit 0

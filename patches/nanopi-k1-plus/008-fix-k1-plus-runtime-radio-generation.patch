@@ -1,0 +1,82 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: NanoPi K1 Plus OpenWrt project <noreply@example.invalid>
+Date: Wed, 15 Jul 2026 00:00:00 +0800
+Subject: [PATCH] wifi-scripts: keep K1 Plus on one real rtl8189es radio
+
+The runtime wifi config generator may append another radio section whenever it
+sees a stale or mismatched K1 Plus wireless config. On the real board that
+turns one rtl8189es PHY into ghost radio sections, leaves first boot without a
+stable AP/LAN story, and keeps the console noisy with txpower warnings.
+
+Teach the shared mac80211 config generator to collapse K1 Plus back to one
+board-owned radio every time wifi config runs. The reset must happen before
+radio name selection and stale-path matching, otherwise a leftover section can
+still block the cleanup path. Once the generated config is stable again, let
+the default AP stay enabled like a normal OpenWrt first boot instead of forcing
+an extra recovery reboot.
+
+---
+ .../network/config/wifi-scripts/files/lib/wifi/mac80211.uc | 20 +++++++++++++++++++-
+ 1 file changed, 19 insertions(+), 1 deletion(-)
+
+diff --git a/package/network/config/wifi-scripts/files/lib/wifi/mac80211.uc b/package/network/config/wifi-scripts/files/lib/wifi/mac80211.uc
+index fa45ff3d5d..e88b05cc5b 100644
+--- a/package/network/config/wifi-scripts/files/lib/wifi/mac80211.uc
++++ b/package/network/config/wifi-scripts/files/lib/wifi/mac80211.uc
+@@ -9,11 +9,27 @@ let board = json(readfile("/etc/board.json"));
+ if (!board.wlan)
+ 	exit(0);
+ 
++let is_k1_plus = board.model && board.model.id == "friendlyelec,nanopi-k1-plus";
+ let idx = 0;
+ let commit;
++let k1_radio_seen = false;
+ 
+ let config = uci.cursor().get_all("wireless") ?? {};
+ 
++function reset_k1_wireless_config() {
++	for (let name, s in config) {
++		switch (s[".type"]) {
++		case "wifi-device":
++		case "wifi-iface":
++			print(`delete wireless.${name}\n`);
++			delete config[name];
++			break;
++		}
++	}
++
++	idx = 0;
++}
++
+ function radio_exists(path, macaddr, phy, radio) {
+ 	for (let name, s in config) {
+ 		if (s[".type"] != "wifi-device")
+@@ -38,6 +54,12 @@ for (let phy_name, phy in board.wlan) {
+ 
+ 	let radios = length(info.radios) > 0 ? info.radios : [{ bands: info.bands }];
+ 	for (let radio in radios) {
++		if (is_k1_plus && k1_radio_seen)
++			continue;
++
++		if (is_k1_plus && !k1_radio_seen)
++			reset_k1_wireless_config();
++
+ 		while (config[`radio${idx}`])
+ 			idx++;
+ 		let name = "radio" + idx;
+@@ -109,12 +131,14 @@ set ${si}=wifi-iface
+ set ${si}.device='${name}'
+ set ${si}.network='lan'
+ set ${si}.mode='ap'
+-set ${si}.ssid='${defaults?.ssid || "ImmortalWrt"}'
++set ${si}.ssid='${defaults?.ssid || (is_k1_plus ? "NanoPi-K1-Plus" : "ImmortalWrt")}'
+ set ${si}.encryption='${defaults?.encryption || encryption}'
+ set ${si}.key='${defaults?.key || ""}'
+ set ${si}.disabled='0'
+ 
+ `);
++		if (is_k1_plus)
++			k1_radio_seen = true;
+ 		config[name] = {};
+ 		commit = true;
+ 	}

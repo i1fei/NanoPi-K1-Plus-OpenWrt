@@ -1,0 +1,59 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: NanoPi K1 Plus OpenWrt project <noreply@example.invalid>
+Date: Fri, 10 Jul 2026 00:00:00 +0800
+Subject: [PATCH] sunxi: add NanoPi K1 Plus image and U-Boot profiles
+
+---
+ package/boot/uboot-sunxi/Makefile | 12 ++++++++++++
+ target/linux/sunxi/image/cortexa53.mk | 11 +++++++++++
+ 2 files changed, 23 insertions(+)
+
+diff --git a/target/linux/sunxi/image/cortexa53.mk b/target/linux/sunxi/image/cortexa53.mk
+index 111111111111..222222222222 100644
+--- a/target/linux/sunxi/image/cortexa53.mk
++++ b/target/linux/sunxi/image/cortexa53.mk
+@@ -67,6 +67,16 @@ define Device/friendlyarm_nanopi-r1s-h5
+ endef
+ TARGET_DEVICES += friendlyarm_nanopi-r1s-h5
+ 
++define Device/friendlyarm_nanopi-k1-plus
++  DEVICE_VENDOR := FriendlyARM
++  DEVICE_MODEL := NanoPi K1 Plus
++  DEVICE_PACKAGES := kmod-gpio-button-hotplug kmod-usb-hid
++  SUPPORTED_DEVICES += friendlyelec,nanopi-k1-plus
++  $(Device/sun50i-h5)
++  SUNXI_DTS := $$(SUNXI_DTS_DIR)$$(SOC)-nanopi-k1-plus
++endef
++TARGET_DEVICES += friendlyarm_nanopi-k1-plus
++
+ define Device/libretech_all-h3-cc-h5
+   DEVICE_VENDOR := Libre Computer
+   DEVICE_MODEL := ALL-H3-CC
+diff --git a/package/boot/uboot-sunxi/Makefile b/package/boot/uboot-sunxi/Makefile
+index 333333333333..444444444444 100644
+--- a/package/boot/uboot-sunxi/Makefile
++++ b/package/boot/uboot-sunxi/Makefile
+@@ -307,6 +307,15 @@ define U-Boot/nanopi_r1s_h5
+   ATF:=a64
+ endef
+ 
++define U-Boot/nanopi_k1_plus
++  BUILD_SUBTARGET:=cortexa53
++  NAME:=NanoPi K1 Plus (H5)
++  BUILD_DEVICES:=friendlyarm_nanopi-k1-plus
++  DEPENDS:=+PACKAGE_u-boot-nanopi_k1_plus:trusted-firmware-a-sunxi-a64
++  UENV:=a64
++  ATF:=a64
++endef
++
+ define U-Boot/pine64_plus
+   BUILD_SUBTARGET:=cortexa53
+   NAME:=Pine64 Plus A64
+@@ -488,6 +499,7 @@ UBOOT_TARGETS := \
+ 	nanopi_neo_plus2 \
+ 	nanopi_neo2 \
+ 	nanopi_r1 \
++	nanopi_k1_plus \
+ 	nanopi_r1s_h5 \
+ 	olimex_olinuxino \
+ 	orangepi_zero \

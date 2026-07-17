@@ -1,0 +1,26 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: NanoPi K1 Plus OpenWrt project <noreply@example.invalid>
+Date: Fri, 10 Jul 2026 00:00:00 +0800
+Subject: [PATCH] sunxi: keep NanoPi K1 Plus wired LAN-safe
+
+The board has one Ethernet port. Keep it as LAN so the device remains
+manageable when the optional Wi-Fi driver is unavailable.
+
+---
+ target/linux/sunxi/base-files/etc/board.d/02_network | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/target/linux/sunxi/base-files/etc/board.d/02_network b/target/linux/sunxi/base-files/etc/board.d/02_network
+index 111111111111..222222222222 100644
+--- a/target/linux/sunxi/base-files/etc/board.d/02_network
++++ b/target/linux/sunxi/base-files/etc/board.d/02_network
+@@ -9,6 +9,9 @@ sunxi_setup_interfaces()
+ 	local board="$1"
+ 
+ 	case "$board" in
++	friendlyelec,nanopi-k1-plus)
++		ucidef_set_interface_lan "eth0"
++		;;
+ 	friendlyarm,nanopi-r1|\
+ 	friendlyarm,nanopi-r1s-h5)
+ 		ucidef_set_interfaces_lan_wan "eth1" "eth0"
