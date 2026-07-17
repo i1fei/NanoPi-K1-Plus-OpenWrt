@@ -27,7 +27,7 @@
 - `config.buildinfo`、`feeds.buildinfo`、`version.buildinfo`
 - `packages.manifest`、完整 `.config` 和编译日志
 
-默认网络只把 `eth0` 放入 LAN，管理地址为 `192.168.1.1/24`。Wi‑Fi 默认不写入任何密码，也不复制旧 FriendlyWrt 配置；RTL8189ES 真实验证成功后，再按需要配置 `wlan0`。
+默认网络只把 `eth0` 放入 LAN，管理地址为 `192.168.1.1/24`。当前恢复镜像不再包含板载 Wi‑Fi 功能，优先保证首启后的有线管理稳定性。
 
 ## 安全启动规则
 
@@ -36,4 +36,3 @@
 ## 本地构建
 
 正式构建默认交给 GitHub Actions。若必须使用 WSL，请把源码放在 Linux 文件系统，例如 `~/k1plus-build`，不要在 `/mnt/f/K1Plus` 直接运行完整 `make -j`；步骤见 [docs/BUILD.md](docs/BUILD.md)。
-

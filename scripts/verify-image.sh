@@ -72,7 +72,6 @@ test -f "$ARTIFACT_DIR/sun50i-h5-nanopi-k1-plus.compiled.dts"
 test -f "$ARTIFACT_DIR/sha256sums"
 test -f "$ARTIFACT_DIR/kernel.config"
 test -f "$ARTIFACT_DIR/openwrt.config"
-test -f "$ARTIFACT_DIR/rtl8189es.build-check.txt"
 
 [ -f "$ARTIFACT_DIR/dtb-source.txt" ] || fail "LINUX_DTB_SOURCE"
 dtb_source=$(sed -n '1p' "$ARTIFACT_DIR/dtb-source.txt")
@@ -99,9 +98,7 @@ manifest=$(
 		sort |
 		head -n 1
 )
-if [ -n "$manifest" ]; then
-	grep -Eq '^kmod-rtl8189es([[:space:]]|$)' "$manifest"
-else
+if [ -z "$manifest" ]; then
 	fail "PACKAGE_MANIFEST"
 fi
 
@@ -139,35 +136,6 @@ for pin in PL2 PL3 PL7 PL10; do
 	require_silent_grep "$ARTIFACT_DIR/sun50i-h5-nanopi-k1-plus.compiled.dts" "pins = \"$pin\"" "PL_GPIO_$pin"
 done
 record "PL_GPIO_VERIFY=PASS"
-
-for pattern in \
-	'mmc@1c10000' \
-	'mmc-pwrseq' \
-	'non-removable' \
-	'keep-power-in-suspend' \
-	'cap-sdio-irq' \
-	'sdio_wifi@1'; do
-	require_silent_grep "$ARTIFACT_DIR/sun50i-h5-nanopi-k1-plus.compiled.dts" "$pattern" "WIFI_SDIO_DTS"
-done
-record "WIFI_SDIO_DTS_VERIFY=PASS"
-
-require_file "$ARTIFACT_DIR/rtl8189es-uci-defaults-50_rtl-wifi" "RTL8189ES_DEFAULT_SCRIPT"
-if grep -Eq 'sed -i|ip link set dev wlan0 up|ip link show dev wlan0' "$ARTIFACT_DIR/rtl8189es-uci-defaults-50_rtl-wifi"; then
-	fail "RTL8189ES_DEFAULT_SCRIPT"
-fi
-record "RTL8189ES_DEFAULT_SCRIPT_VERIFY=PASS"
-
-require_file "$ARTIFACT_DIR/k1-plus-mac80211-config-generator.uc" "K1_MAC80211_GENERATOR"
-for pattern in \
-	'friendlyelec,nanopi-k1-plus' \
-	'reset_k1_wireless_config' \
-	'delete wireless\.' \
-	'k1_radio_seen = true' \
-	'NanoPi-K1-Plus' \
-	"disabled='0'"; do
-	require_silent_grep "$ARTIFACT_DIR/k1-plus-mac80211-config-generator.uc" "$pattern" "K1_MAC80211_GENERATOR"
-done
-record "K1_MAC80211_GENERATOR_VERIFY=PASS"
 
 for pattern in \
 	'usb0-vbus' \
@@ -232,23 +200,6 @@ for pkg in ttyd luci-app-ttyd; do
 	require_manifest_pkg "$pkg" "TTYD"
 done
 record_full "TTYD=PASS"
-
-require_manifest_pkg kmod-rtl8189es "RTL8189ES"
-record_full "RTL8189ES=PASS"
-
-for pkg in wpad-openssl hostapd-utils iw-full; do
-	require_manifest_pkg "$pkg" "WIFI_AP_PROVIDER"
-done
-for pkg in \
-	wpad-basic \
-	wpad-basic-mbedtls \
-	wpad-basic-openssl \
-	wpad-basic-wolfssl \
-	wpad-mbedtls \
-	wpad-wolfssl; do
-	require_no_manifest_pkg "$pkg" "WIFI_AP_PROVIDER"
-done
-record_full "WIFI_AP_PROVIDER=PASS"
 
 require_manifest_pkg kmod-usb-hid "USB_HID"
 record_full "USB_HID=PASS"

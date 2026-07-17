@@ -651,3 +651,30 @@ Validation rules were updated to match that rollback.
 Next:
 
 Rebuild and retest first-boot LAN and Wi-Fi bring-up on hardware.
+
+## K1 Plus LAN-first recovery baseline
+
+Observed on hardware on July 17, 2026:
+
+The recovery image still required repeated reboot attempts before `eth0`
+settled on `192.168.1.1`, while rtl8189es kept generating `wlan0` / `wlan1`
+churn and repeated txpower noise on the console.
+
+Decision:
+
+Board Wi-Fi is dropped from the recovery image for now.
+
+Resolution:
+
+The NanoPi K1 Plus build no longer pulls `kmod-rtl8189es` or Wi-Fi AP userspace
+packages into the default image, and image verification no longer treats
+rtl8189es artifacts as required.
+
+Goal:
+
+Stabilize first-boot wired LAN at `192.168.1.1` before revisiting onboard
+Wi-Fi.
+
+Next:
+
+Rebuild the SD card image and retest first-boot wired access only.

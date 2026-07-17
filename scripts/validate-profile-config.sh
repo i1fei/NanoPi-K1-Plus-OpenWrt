@@ -94,7 +94,6 @@ check_base() {
 		CONFIG_PACKAGE_luci-app-package-manager \
 		CONFIG_PACKAGE_luci-i18n-base-zh-cn \
 		CONFIG_PACKAGE_dropbear \
-		CONFIG_PACKAGE_kmod-rtl8189es \
 		CONFIG_PACKAGE_kmod-mmc \
 		CONFIG_PACKAGE_kmod-usb-hid \
 		CONFIG_PACKAGE_kmod-usb-storage \
@@ -132,7 +131,7 @@ check_base() {
 		require_not_enabled "$symbol"
 	done
 
-	echo "RTL8189ES_DRIVER=ENABLED" >> "$resolution"
+	echo "RTL8189ES_DRIVER=INTENTIONALLY_EXCLUDED" >> "$resolution"
 	echo "WIFI_AP_STACK=NOT_SELECTED" >> "$resolution"
 	echo "BLUETOOTH=NOT_SELECTED" >> "$resolution"
 }
@@ -146,41 +145,16 @@ check_full() {
 		CONFIG_PACKAGE_luci-app-ttyd \
 		CONFIG_PACKAGE_samba4-server \
 		CONFIG_PACKAGE_luci-app-samba4 \
-		CONFIG_PACKAGE_wpad-openssl \
-		CONFIG_PACKAGE_hostapd-utils \
-		CONFIG_PACKAGE_iw-full \
 		CONFIG_PACKAGE_kmod-bluetooth \
 		CONFIG_PACKAGE_kmod-btusb; do
 		require_enabled "$symbol"
 	done
 
-	providers="
-CONFIG_PACKAGE_wpad-openssl
-CONFIG_PACKAGE_wpad-mbedtls
-CONFIG_PACKAGE_wpad-wolfssl
-CONFIG_PACKAGE_wpad-basic
-CONFIG_PACKAGE_wpad-basic-mbedtls
-CONFIG_PACKAGE_wpad-basic-openssl
-CONFIG_PACKAGE_wpad-basic-wolfssl
-"
-	count=0
-	for provider in $providers; do
-		if is_enabled "$provider"; then
-			count=$((count + 1))
-			selected_provider=$provider
-		fi
-	done
-
-	if [ "$count" -eq 1 ] && [ "${selected_provider:-}" = CONFIG_PACKAGE_wpad-openssl ]; then
-		echo "WIFI_PROVIDER_CHECK=PASS" >> "$resolution"
-	else
-		note_fail "Wi-Fi provider check failed"
-	fi
-
 	echo "EXTERNAL_USB_BLUETOOTH=PREPARED" >> "$resolution"
 	echo "ONBOARD_BLUETOOTH_HARDWARE=UNKNOWN" >> "$resolution"
 	echo "ONBOARD_BLUETOOTH_DTS=NOT_IMPLEMENTED" >> "$resolution"
 	echo "BLUETOOTH_HARDWARE_TEST=UNTESTED" >> "$resolution"
+	echo "WIFI=INTENTIONALLY_EXCLUDED" >> "$resolution"
 }
 
 classify_requested

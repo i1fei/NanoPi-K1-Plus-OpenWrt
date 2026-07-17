@@ -19,7 +19,7 @@ index 111111111111..222222222222 100644
 +define Device/friendlyarm_nanopi-k1-plus
 +  DEVICE_VENDOR := FriendlyARM
 +  DEVICE_MODEL := NanoPi K1 Plus
-+  DEVICE_PACKAGES := kmod-rtl8189es kmod-gpio-button-hotplug kmod-usb-hid
++  DEVICE_PACKAGES := kmod-gpio-button-hotplug kmod-usb-hid
 +  SUPPORTED_DEVICES += friendlyelec,nanopi-k1-plus
 +  $(Device/sun50i-h5)
 +  SUNXI_DTS := $$(SUNXI_DTS_DIR)$$(SOC)-nanopi-k1-plus

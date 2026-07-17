@@ -14,20 +14,10 @@ for patch in \
 	"$PATCH_DIR/002-add-k1-plus-device-profile.patch" \
 	"$PATCH_DIR/003-add-k1-plus-network.patch" \
 	"$PATCH_DIR/004-add-stage-a-console-support.patch" \
-	"$PATCH_DIR/006-restore-k1-plus-hardware-foundation.patch" \
-	"$PATCH_DIR/007-stabilize-k1-plus-rtl8189es-radio.patch" \
-	"$PATCH_DIR/008-fix-k1-plus-runtime-radio-generation.patch"; do
+	"$PATCH_DIR/006-restore-k1-plus-hardware-foundation.patch"; do
 	[ -f "$patch" ] || { echo "missing patch: $patch" >&2; exit 1; }
-	case "$(basename "$patch")" in
-		008-fix-k1-plus-runtime-radio-generation.patch)
-			git -C "$SOURCE_DIR" apply --check --unidiff-zero "$patch"
-			git -C "$SOURCE_DIR" apply --unidiff-zero "$patch"
-			;;
-		*)
-			git -C "$SOURCE_DIR" apply --check "$patch"
-			git -C "$SOURCE_DIR" apply "$patch"
-			;;
-	esac
+	git -C "$SOURCE_DIR" apply --check "$patch"
+	git -C "$SOURCE_DIR" apply "$patch"
 	echo "APPLIED $(basename "$patch")"
 done
 
