@@ -151,7 +151,7 @@ jobs:
             .work/openwrt/bin/targets/sunxi/cortexa53 \
             .work/artifact \
             .work/openwrt
-          ./scripts/verify-image.sh .work/artifact
+          ./scripts/verify-image.sh .work/artifact "$BUILD_PROFILE"
           if [ -f .work/build-single.log ]; then
             cat .work/build-parallel.log .work/build-single.log > .work/artifact/build.log
           else

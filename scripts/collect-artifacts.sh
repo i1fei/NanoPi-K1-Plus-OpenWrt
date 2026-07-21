@@ -70,6 +70,9 @@ done
 [ -f "$SOURCE_DIR/target/linux/sunxi/base-files/etc/uci-defaults/99-k1-plus-mmc-cross-mount-policy" ] &&
 	cp "$SOURCE_DIR/target/linux/sunxi/base-files/etc/uci-defaults/99-k1-plus-mmc-cross-mount-policy" \
 		"$ARTIFACT_DIR/k1-plus-mmc-cross-mount-policy"
+[ -f "$SOURCE_DIR/target/linux/sunxi/base-files/etc/uci-defaults/98-k1-plus-wifi-compat-lan" ] &&
+	cp "$SOURCE_DIR/target/linux/sunxi/base-files/etc/uci-defaults/98-k1-plus-wifi-compat-lan" \
+		"$ARTIFACT_DIR/k1-plus-wifi-compat-lan-policy"
 
 manifest=$(
 	find "$IMAGE_DIR" -maxdepth 2 -type f -name 'packages.manifest' -print |
