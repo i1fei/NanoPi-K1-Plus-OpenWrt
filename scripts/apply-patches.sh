@@ -3,6 +3,7 @@ set -eu
 
 SOURCE_DIR=${1:?source directory is required}
 ROOT_DIR=${2:?project directory is required}
+PATCH_MODE=${3:-recovery}
 PATCH_DIR="$ROOT_DIR/patches/nanopi-k1-plus"
 
 install -D -m 0644 \
@@ -20,6 +21,18 @@ for patch in \
 	git -C "$SOURCE_DIR" apply "$patch"
 	echo "APPLIED $(basename "$patch")"
 done
+
+if [ "$PATCH_MODE" = "wifi_compat" ]; then
+	for patch in \
+		"$PATCH_DIR/007-stabilize-k1-plus-rtl8189es-radio.patch" \
+		"$PATCH_DIR/008-fix-k1-plus-runtime-radio-generation.patch" \
+		"$PATCH_DIR/009-add-k1-plus-wifi-compat-policy.patch"; do
+		[ -f "$patch" ] || { echo "missing patch: $patch" >&2; exit 1; }
+		git -C "$SOURCE_DIR" apply --check "$patch"
+		git -C "$SOURCE_DIR" apply "$patch"
+		echo "APPLIED $(basename "$patch")"
+	done
+fi
 
 # This file is a patch for the separately downloaded U-Boot source. The
 # OpenWrt package applies files in this directory after extracting U-Boot.

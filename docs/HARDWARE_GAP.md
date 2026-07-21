@@ -39,7 +39,7 @@ output is observed.
 
 | Item | Status | Notes |
 | --- | --- | --- |
-| RTL8189ES Wi-Fi driver | PREPARED | Package is present; hardware behavior is not verified. |
+| RTL8189ES Wi-Fi driver | PREPARED | Official `4.14` live board proves the SDIO radio can bind and broadcast; the current 6.x recovery line still keeps onboard Wi-Fi intentionally disabled. |
 | USB HID | PREPARED | Kernel/module and manifest validation pass. |
 | USB Storage | PREPARED | Storage modules and filesystem packages are present. |
 | eMMC | PREPARED | DTS/kernel have eMMC paths, but only identify/read-only tests are allowed. |
@@ -98,7 +98,8 @@ Bluetooth:
 ## E. Need Real Hardware Confirmation
 
 - eMMC module presence and read-only detection.
-- RTL8189ES Wi-Fi client and possible AP mode.
+- 6.x compatibility-track Wi-Fi: one real radio, AP authentication, and DHCP
+  on the shared LAN bridge.
 - USB Host with HID and storage devices.
 - USB OTG role behavior.
 - LED and button runtime behavior.
@@ -127,3 +128,28 @@ eMMC rule:
 - Rockchip-specific FriendlyWrt drivers or board logic.
 - Broad package selections such as `ALL_KMODS`, `ALL_NONSHARED`, SDK, toolchain,
   or DEVEL images.
+
+## G. Official 4.14 Correction
+
+The official FriendlyWrt `4.14` live board on July 21, 2026 clarified two
+important things:
+
+1. official onboard Wi-Fi is real, visible, and can authenticate clients
+2. official AP-side DHCP is not a clean success baseline
+
+Observed behavior:
+
+- SSID is visible
+- password `password` is accepted
+- clients do not receive DHCP leases
+
+Therefore the official image is useful for:
+
+- RTL8189ES board enablement
+- AP bring-up evidence
+
+but not as a blind template for:
+
+- LAN topology
+- DHCP closure
+- first-boot network policy

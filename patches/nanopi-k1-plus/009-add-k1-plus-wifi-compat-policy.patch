@@ -1,0 +1,60 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: NanoPi K1 Plus OpenWrt project <noreply@example.invalid>
+Date: Tue, 21 Jul 2026 00:00:00 +0800
+Subject: [PATCH] sunxi: add K1 Plus Wi-Fi compatibility firstboot policy
+
+The LAN-first recovery image keeps onboard Wi-Fi out of the active profile,
+but the dedicated Wi-Fi compatibility branch needs one deterministic firstboot
+network closure: wired Ethernet and the onboard AP must share br-lan at
+192.168.1.1.
+
+Add a board-specific uci-defaults helper that only activates when both the
+RTL8189ES driver and hostapd userspace are present. Recovery images keep their
+current behavior because they do not ship that Wi-Fi stack.
+
+---
+ .../etc/uci-defaults/98-k1-plus-wifi-compat-lan      | 33 +++++++++++++++++++
+ 1 file changed, 33 insertions(+)
+ create mode 100755 target/linux/sunxi/base-files/etc/uci-defaults/98-k1-plus-wifi-compat-lan
+
+diff --git a/target/linux/sunxi/base-files/etc/uci-defaults/98-k1-plus-wifi-compat-lan b/target/linux/sunxi/base-files/etc/uci-defaults/98-k1-plus-wifi-compat-lan
+new file mode 100755
+index 000000000000..111111111111
+--- /dev/null
++++ b/target/linux/sunxi/base-files/etc/uci-defaults/98-k1-plus-wifi-compat-lan
+@@ -0,0 +1,33 @@
++#!/bin/sh
++
++. /lib/functions.sh
++
++[ "$(board_name)" = "friendlyelec,nanopi-k1-plus" ] || exit 0
++[ -f /etc/modules.d/rtl8189es ] || exit 0
++[ -x /usr/sbin/hostapd ] || exit 0
++
++ula_prefix="$(uci -q get network.globals.ula_prefix || true)"
++
++cat > /etc/config/network <<EOF
++config interface 'loopback'
++	option device 'lo'
++	option proto 'static'
++	list ipaddr '127.0.0.1/8'
++
++config globals 'globals'
++	option ula_prefix '${ula_prefix}'
++
++config device
++	option name 'br-lan'
++	option type 'bridge'
++	list ports 'eth0'
++
++config interface 'lan'
++	option device 'br-lan'
++	option proto 'static'
++	option ipaddr '192.168.1.1'
++	option netmask '255.255.255.0'
++	option ip6assign '60'
++EOF
++
++logger -t k1-plus "enabled Wi-Fi compatibility LAN bridge on br-lan"
++
++exit 0

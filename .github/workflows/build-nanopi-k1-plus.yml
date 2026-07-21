@@ -6,6 +6,11 @@ on:
       - feat/nanopi-k1-plus
   workflow_dispatch:
     inputs:
+      profile:
+        description: Build profile (default uses configs/NanoPi_K1_Plus.config)
+        required: false
+        default: default
+        type: string
       source_ref:
         description: ImmortalWrt commit SHA or branch to build
         required: false
@@ -29,6 +34,7 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     env:
+      BUILD_PROFILE: ${{ github.event.inputs.profile || 'default' }}
       SOURCE_REF: ${{ github.event.inputs.source_ref || '4cafb73e88b6cf61cfeca2ee6cf8ecabb60f7a07' }}
       DEBUG_BUILD: ${{ github.event.inputs.debug || 'false' }}
       KEEP_BUILD_INFO: ${{ github.event.inputs.keep_build_info || 'false' }}
@@ -74,8 +80,19 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
           cd "$GITHUB_WORKSPACE"
-          ./scripts/apply-patches.sh .work/openwrt "$GITHUB_WORKSPACE" | tee .work/patch.log
-          cp configs/NanoPi_K1_Plus.config .work/openwrt/.config
+          case "$BUILD_PROFILE" in
+            default)
+              config_path="configs/NanoPi_K1_Plus.config"
+              patch_mode="recovery"
+              ;;
+            *)
+              config_path="configs/NanoPi_K1_Plus_${BUILD_PROFILE}.config"
+              patch_mode="$BUILD_PROFILE"
+              ;;
+          esac
+          [ -f "$config_path" ] || { echo "missing config: $config_path" >&2; exit 1; }
+          ./scripts/apply-patches.sh .work/openwrt "$GITHUB_WORKSPACE" "$patch_mode" | tee .work/patch.log
+          cp "$config_path" .work/openwrt/.config
           cd .work/openwrt
           make defconfig
 

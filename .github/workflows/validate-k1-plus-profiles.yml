@@ -15,6 +15,7 @@ jobs:
         profile:
           - base
           - full
+          - wifi_compat
     env:
       SOURCE_REF: 4cafb73e88b6cf61cfeca2ee6cf8ecabb60f7a07
     steps:
@@ -46,7 +47,7 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
           cd "$GITHUB_WORKSPACE"
-          ./scripts/apply-patches.sh "$source_dir" "$GITHUB_WORKSPACE" | tee ".work/patch-${{ matrix.profile }}.log"
+          ./scripts/apply-patches.sh "$source_dir" "$GITHUB_WORKSPACE" "${{ matrix.profile }}" | tee ".work/patch-${{ matrix.profile }}.log"
 
       - name: Run make defconfig
         run: |

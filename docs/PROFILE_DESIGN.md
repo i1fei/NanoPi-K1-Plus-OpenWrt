@@ -64,7 +64,6 @@ larger rootfs size:
 - Argon theme and Argon config.
 - ttyd and LuCI commands.
 - File browser and disk manager.
-- Wi-Fi AP stack with `wpad-openssl`.
 - Samba4, LuCI Samba4, WSD discovery, and OpenSSH SFTP server.
 - USB Storage UAS and disk utilities.
 - Common USB serial adapters.
@@ -89,12 +88,22 @@ card and does not migrate or write to eMMC.
 Base keeps the RTL8189ES driver but intentionally does not include Wi-Fi AP
 services.
 
-Full selects only one complete AP provider:
+Full currently follows the same recovery principle:
 
-- `wpad-openssl`
+- onboard Wi-Fi is intentionally excluded from the active Base/Full profiles
 
-The validation workflow rejects conflicting `wpad-basic-*`, `wpad-mbedtls`, or
-`wpad-wolfssl` selections.
+This is not because RTL8189ES hardware is fake. It is because the current
+stable line is the LAN-first recovery image.
+
+The next Wi-Fi step is now explicitly separate:
+
+- keep `192.168.1.1` recovery intact
+- reintroduce onboard Wi-Fi only on a dedicated 6.x compatibility branch/profile
+- require AP authentication plus DHCP on the shared LAN bridge before merging
+  any Wi-Fi stack back into the main recovery profiles
+
+Modern AP-provider selection such as `wpad-openssl` belongs to that future
+compatibility profile, not to the current recovery Base/Full profiles.
 
 ## Bluetooth Strategy
 

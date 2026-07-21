@@ -157,12 +157,64 @@ check_full() {
 	echo "WIFI=INTENTIONALLY_EXCLUDED" >> "$resolution"
 }
 
+check_wifi_compat() {
+	require_value CONFIG_TARGET_ROOTFS_PARTSIZE 1024
+	for symbol in \
+		CONFIG_PACKAGE_luci \
+		CONFIG_PACKAGE_luci-app-package-manager \
+		CONFIG_PACKAGE_luci-i18n-base-zh-cn \
+		CONFIG_PACKAGE_dropbear \
+		CONFIG_PACKAGE_kmod-mmc \
+		CONFIG_PACKAGE_kmod-usb-hid \
+		CONFIG_PACKAGE_kmod-usb-storage \
+		CONFIG_PACKAGE_kmod-fs-ext4 \
+		CONFIG_PACKAGE_kmod-fs-vfat \
+		CONFIG_PACKAGE_kmod-fs-exfat \
+		CONFIG_PACKAGE_kmod-fs-ntfs3 \
+		CONFIG_PACKAGE_block-mount \
+		CONFIG_PACKAGE_e2fsprogs \
+		CONFIG_PACKAGE_nano \
+		CONFIG_PACKAGE_curl \
+		CONFIG_PACKAGE_wget-ssl \
+		CONFIG_PACKAGE_htop \
+		CONFIG_PACKAGE_ethtool \
+		CONFIG_PACKAGE_iperf3 \
+		CONFIG_PACKAGE_usbutils \
+		CONFIG_PACKAGE_ca-bundle \
+		CONFIG_PACKAGE_evtest \
+		CONFIG_PACKAGE_libdrm-tests \
+		CONFIG_PACKAGE_kmod-rtl8189es \
+		CONFIG_PACKAGE_wpad-openssl \
+		CONFIG_PACKAGE_wireless-regdb \
+		CONFIG_PACKAGE_iwinfo \
+		CONFIG_PACKAGE_rpcd-mod-iwinfo; do
+		require_enabled "$symbol"
+	done
+
+	for symbol in \
+		CONFIG_PACKAGE_luci-app-watchcat \
+		CONFIG_PACKAGE_watchcat \
+		CONFIG_PACKAGE_kmod-bluetooth \
+		CONFIG_PACKAGE_kmod-btusb \
+		CONFIG_PACKAGE_bluez-daemon \
+		CONFIG_PACKAGE_openssh-server \
+		CONFIG_PACKAGE_samba4-server; do
+		require_not_enabled "$symbol"
+	done
+
+	echo "RTL8189ES_DRIVER=SELECTED" >> "$resolution"
+	echo "WIFI_AP_STACK=SELECTED" >> "$resolution"
+	echo "LAN_POLICY=COMPAT_BRIDGE_192.168.1.1" >> "$resolution"
+	echo "WATCHCAT=EXCLUDED" >> "$resolution"
+}
+
 classify_requested
 check_common
 
 case "$profile" in
 	base) check_base ;;
 	full) check_full ;;
+	wifi_compat) check_wifi_compat ;;
 	*) note_fail "unknown profile: $profile" ;;
 esac
 

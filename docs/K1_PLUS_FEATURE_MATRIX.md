@@ -15,9 +15,9 @@ Sources:
 | MicroSD Boot | PASS | PASS | PASS | boot/storage | PASS | Keep in Base Profile |
 | eMMC | PASS | PARTIAL | PREPARED | DTS/kernel/storage | UNTESTED | Identify and read-only test only |
 | Ethernet | PASS | PASS | PASS | DTS/kernel/netifd | PASS | Keep in Base Profile |
-| Wi-Fi Driver | PASS | PARTIAL | PREPARED | kernel/package | PREPARED | Keep `kmod-rtl8189es`, test hardware |
-| Wi-Fi AP | PARTIAL | PASS | NOT IMPLEMENTED | package/config | NOT IMPLEMENTED | Full Profile after driver test |
-| Bluetooth | UNKNOWN | PARTIAL | NOT IMPLEMENTED | hardware/package | UNKNOWN | Do not assume onboard Bluetooth |
+| Wi-Fi Driver | PASS | PASS | PREPARED | kernel/package | PREPARED | Official `4.14` proves SDIO RTL8189ES bind path; keep separate from LAN-first recovery line |
+| Wi-Fi AP | PARTIAL | PARTIAL | NOT IMPLEMENTED | package/config | NOT IMPLEMENTED | Official `4.14` broadcasts and authenticates, but LAN/DHCP closure is broken; reintroduce on a separate 6.x compatibility track |
+| Bluetooth | UNKNOWN | UNKNOWN | NOT IMPLEMENTED | hardware/package | UNKNOWN | Official live `4.14` still does not prove onboard Bluetooth |
 | HDMI Video | PASS | NOT APPLICABLE | PREPARED | DTS/kernel/DRM | FAIL | Debug DRM, EDID, framebuffer, TTY, DTS |
 | HDMI tty1 | PASS | NOT APPLICABLE | PREPARED | kernel/init | FAIL | Depends on HDMI video output |
 | HDMI Audio | PASS | NOT APPLICABLE | NOT IMPLEMENTED | kernel/audio | NOT IMPLEMENTED | Defer until HDMI video works |
@@ -63,7 +63,8 @@ Sources:
 - Dropbear SSH.
 - Package manager.
 - Nano, curl, wget, htop, ethtool, iperf3, usbutils.
-- RTL8189ES driver, but mark Wi-Fi hardware as test pending.
+- Keep onboard Wi-Fi out of the recovery baseline until the separate 6.x
+  compatibility track proves AP plus DHCP without breaking `192.168.1.1`.
 - USB storage and USB HID.
 - ext4, vfat, exfat, ntfs3, block-mount, e2fsprogs.
 - Preserve TTL console and current Stage A tty1 preparation.
@@ -71,7 +72,8 @@ Sources:
 ## Recommended Full Profile
 
 - Everything in Base Profile.
-- Wi-Fi AP packages after RTL8189ES client/driver verification.
+- Onboard Wi-Fi only on a separate compatibility track after one real radio,
+  AP authentication, and DHCP on the shared LAN bridge are all verified.
 - HTTPS LuCI after certificate policy is chosen.
 - Chinese LuCI packages only if they appear in the final manifest.
 - ttyd or equivalent web terminal.
