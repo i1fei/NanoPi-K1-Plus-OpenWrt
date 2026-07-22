@@ -305,9 +305,11 @@ verify_wifi_compat_profile() {
 	record_full "HARDWARE_TOOLS=PASS"
 
 	require_file "$ARTIFACT_DIR/k1-plus-wifi-compat-lan-policy" "WIFI_COMPAT_LAN_POLICY"
-	require_grep "$ARTIFACT_DIR/k1-plus-wifi-compat-lan-policy" 'uci -q batch' "WIFI_COMPAT_LAN_POLICY"
-	require_grep "$ARTIFACT_DIR/k1-plus-wifi-compat-lan-policy" "set network\\.lan\\.device='br-lan'" "WIFI_COMPAT_LAN_POLICY"
-	require_grep "$ARTIFACT_DIR/k1-plus-wifi-compat-lan-policy" "set network\\.lan\\.ipaddr='192\\.168\\.1\\.1'" "WIFI_COMPAT_LAN_POLICY"
+	require_grep "$ARTIFACT_DIR/k1-plus-wifi-compat-lan-policy" '^cat > /etc/config/network <<EOF$' "WIFI_COMPAT_LAN_POLICY"
+	require_grep "$ARTIFACT_DIR/k1-plus-wifi-compat-lan-policy" "^option name 'br-lan'$" "WIFI_COMPAT_LAN_POLICY"
+	require_grep "$ARTIFACT_DIR/k1-plus-wifi-compat-lan-policy" "^list ports 'eth0'$" "WIFI_COMPAT_LAN_POLICY"
+	require_grep "$ARTIFACT_DIR/k1-plus-wifi-compat-lan-policy" "^option device 'br-lan'$" "WIFI_COMPAT_LAN_POLICY"
+	require_grep "$ARTIFACT_DIR/k1-plus-wifi-compat-lan-policy" "^option ipaddr '192\\.168\\.1\\.1'$" "WIFI_COMPAT_LAN_POLICY"
 	record_full "LAN_POLICY=COMPAT_BRIDGE_192.168.1.1"
 
 	for pkg in \
