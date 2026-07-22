@@ -1,0 +1,47 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: NanoPi K1 Plus OpenWrt project <noreply@example.invalid>
+Date: Wed, 22 Jul 2026 00:00:00 +0800
+Subject: [PATCH] wifi-scripts: fallback to lone phy on K1 Plus
+
+NanoPi K1 Plus exposes one onboard rtl8189es PHY. During runtime netifd may
+occasionally invoke the mac80211 setup path with incomplete radio identity
+data, which leaves `find_phy()` without a path/name match even though the board
+has only one actual phy0.
+
+Keep the generic matching order intact, but add a board-specific final fallback
+for the single-phy K1 Plus case. This avoids `PHY is undefined for device`
+retries while still refusing to guess when extra USB radios are present.
+
+---
+ .../config/wifi-scripts/files/usr/share/ucode/wifi/utils.uc | 14 +++++++++++++-
+ 1 file changed, 13 insertions(+), 1 deletion(-)
+
+diff --git a/package/network/config/wifi-scripts/files/usr/share/ucode/wifi/utils.uc b/package/network/config/wifi-scripts/files/usr/share/ucode/wifi/utils.uc
+index 7ecfd2d204..44670f1f53 100644
+--- a/package/network/config/wifi-scripts/files/usr/share/ucode/wifi/utils.uc
++++ b/package/network/config/wifi-scripts/files/usr/share/ucode/wifi/utils.uc
+@@ -103,10 +103,23 @@ function find_phy_by_name(phys, name, rename) {
+ 	return index(phys, name) < 0 ? null : name;
+ }
+ 
++function find_k1_plus_single_phy(phys) {
++	let board = json(readfile("/etc/board.json"));
++
++	if (board?.model?.id != "friendlyelec,nanopi-k1-plus")
++		return null;
++
++	if (length(phys) != 1)
++		return null;
++
++	return phys[0];
++}
++
+ export function find_phy(config, rename) {
+ 	let phys = lsdir("/sys/class/ieee80211");
+ 
+ 	return find_phy_by_path(phys, config.path) ??
+ 	       find_phy_by_macaddr(phys, config.macaddr) ??
+-	       find_phy_by_name(phys, config.phy, rename);
++	       find_phy_by_name(phys, config.phy, rename) ??
++	       find_k1_plus_single_phy(phys);
+ };
