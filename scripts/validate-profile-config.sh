@@ -204,7 +204,7 @@ check_wifi_compat() {
 
 	echo "RTL8189ES_DRIVER=SELECTED" >> "$resolution"
 	echo "WIFI_AP_STACK=SELECTED" >> "$resolution"
-	echo "LAN_POLICY=COMPAT_BRIDGE_192.168.1.1" >> "$resolution"
+	echo "LAN_POLICY=COMPAT_ETH0_192.168.1.1" >> "$resolution"
 	echo "WATCHCAT=EXCLUDED" >> "$resolution"
 }
 

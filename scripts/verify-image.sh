@@ -306,11 +306,9 @@ verify_wifi_compat_profile() {
 
 	require_file "$ARTIFACT_DIR/k1-plus-wifi-compat-lan-policy" "WIFI_COMPAT_LAN_POLICY"
 	require_grep "$ARTIFACT_DIR/k1-plus-wifi-compat-lan-policy" '^cat > /etc/config/network <<EOF$' "WIFI_COMPAT_LAN_POLICY"
-	require_grep "$ARTIFACT_DIR/k1-plus-wifi-compat-lan-policy" "^[[:space:]]*option name 'br-lan'$" "WIFI_COMPAT_LAN_POLICY"
-	require_grep "$ARTIFACT_DIR/k1-plus-wifi-compat-lan-policy" "^[[:space:]]*list ports 'eth0'$" "WIFI_COMPAT_LAN_POLICY"
-	require_grep "$ARTIFACT_DIR/k1-plus-wifi-compat-lan-policy" "^[[:space:]]*option device 'br-lan'$" "WIFI_COMPAT_LAN_POLICY"
+	require_grep "$ARTIFACT_DIR/k1-plus-wifi-compat-lan-policy" "^[[:space:]]*option device 'eth0'$" "WIFI_COMPAT_LAN_POLICY"
 	require_grep "$ARTIFACT_DIR/k1-plus-wifi-compat-lan-policy" "^[[:space:]]*option ipaddr '192\\.168\\.1\\.1'$" "WIFI_COMPAT_LAN_POLICY"
-	record_full "LAN_POLICY=COMPAT_BRIDGE_192.168.1.1"
+	record_full "LAN_POLICY=COMPAT_ETH0_192.168.1.1"
 
 	for pkg in \
 		luci-app-watchcat \

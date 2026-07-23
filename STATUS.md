@@ -678,3 +678,33 @@ Wi-Fi.
 Next:
 
 Rebuild the SD card image and retest first-boot wired access only.
+
+## K1 Plus Wi-Fi compatibility LAN-first rollback
+
+Observed on hardware on July 23, 2026:
+
+The `wifi_compat` image did rewrite `/etc/config/network` to `192.168.1.1`,
+but the board still failed to present a usable LAN. Console logs showed
+`hostapd` starting during boot, `br-lan` and `eth0` staying down, and even
+simple `ip addr` mutations blocking once the Wi-Fi path became active.
+
+Root cause:
+
+The compatibility image still tried to bring up rtl8189es AP mode during first
+boot and coupled wired LAN to a `br-lan` bridge before the driver path was
+stable. On real hardware that left the first-boot management path vulnerable to
+Wi-Fi-triggered rtnetlink deadlock.
+
+Resolution:
+
+The `wifi_compat` profile stays package-compatible with rtl8189es, but first
+boot is rolled back to a wired-first policy:
+
+- `lan` is pinned directly to `eth0`
+- static address remains `192.168.1.1`
+- generated K1 Plus Wi-Fi config is present but disabled by default
+
+Next:
+
+Rebuild the `wifi_compat` image and retest first-boot wired access before
+re-enabling onboard AP startup.
