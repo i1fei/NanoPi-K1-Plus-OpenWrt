@@ -15,6 +15,7 @@ jobs:
         profile:
           - base
           - full
+          - buddha
           - wifi_compat
     env:
       SOURCE_REF: 4cafb73e88b6cf61cfeca2ee6cf8ecabb60f7a07

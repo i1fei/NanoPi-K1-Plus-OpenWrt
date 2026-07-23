@@ -23,6 +23,11 @@ case "$PROFILE" in
 		PROFILE_LABEL=WIFI_COMPAT
 		PROFILE_VALIDATION_FILE="$ARTIFACT_DIR/wifi-compat-profile-manifest-validation.txt"
 		;;
+	buddha)
+		PROFILE_KEY=buddha
+		PROFILE_LABEL=BUDDHA
+		PROFILE_VALIDATION_FILE="$ARTIFACT_DIR/buddha-profile-manifest-validation.txt"
+		;;
 	*)
 		echo "unknown build profile: $PROFILE" >&2
 		exit 1
@@ -324,6 +329,93 @@ verify_wifi_compat_profile() {
 	record_full "WIFI_COMPAT_PROFILE_VERIFY=PASS"
 }
 
+verify_buddha_profile() {
+	record_profile_header
+	require_openwrt_config_line 'CONFIG_TARGET_ROOTFS_PARTSIZE=8192' "ROOTFS_PARTSIZE"
+	record "ROOTFS_PARTSIZE=8192"
+	record_full "ROOTFS_PARTSIZE=8192"
+
+	for pkg in \
+		luci \
+		luci-app-package-manager \
+		luci-i18n-base-zh-cn \
+		luci-ssl-openssl \
+		ttyd \
+		luci-app-ttyd \
+		luci-app-commands \
+		luci-app-filebrowser \
+		luci-app-diskman \
+		luci-app-firewall \
+		samba4-server \
+		luci-app-samba4 \
+		openssh-sftp-server \
+		openssh-sftp-client \
+		tailscale \
+		luci-app-tailscale \
+		zerotier \
+		luci-app-zerotier \
+		luci-app-ddns \
+		ddns-scripts \
+		ddns-scripts-services \
+		ddns-scripts-utils \
+		luci-app-homeproxy \
+		luci-app-mosdns \
+		luci-app-nikki \
+		luci-app-openclash \
+		luci-app-passwall \
+		luci-app-passwall2 \
+		luci-app-ssr-plus \
+		luci-app-vlmcsd \
+		luci-app-momo \
+		netdata \
+		netperf \
+		bind-ddns-confgen \
+		fdisk \
+		cfdisk \
+		htop \
+		usbutils; do
+		require_manifest_pkg "$pkg" "BUDDHA_SOFTWARE"
+	done
+	record_full "BUDDHA_SOFTWARE=PASS"
+
+	for pkg in \
+		luci-theme-bootstrap \
+		luci-theme-edge \
+		luci-theme-lightblue; do
+		require_manifest_pkg "$pkg" "BUDDHA_THEMES"
+	done
+	record_full "BUDDHA_THEMES=PASS"
+
+	for pkg in \
+		ddns-scripts_aliyun \
+		ddns-scripts-cloudflare \
+		ddns-scripts-cnkuai \
+		ddns-scripts-digitalocean \
+		ddns-scripts-dnspod \
+		ddns-scripts-dnspod-v3 \
+		ddns-scripts-freedns \
+		ddns-scripts-gandi \
+		ddns-scripts-gcp \
+		ddns-scripts-godaddy \
+		ddns-scripts-huaweicloud \
+		ddns-scripts-luadns \
+		ddns-scripts-noip \
+		ddns-scripts-ns1 \
+		ddns-scripts-nsupdate \
+		ddns-scripts-one \
+		ddns-scripts-pdns \
+		ddns-scripts-porkbun \
+		ddns-scripts-route53 \
+		ddns-scripts-transip; do
+		require_manifest_pkg "$pkg" "DDNS_PROVIDERS"
+	done
+	record_full "DDNS_PROVIDERS=PASS"
+
+	require_no_manifest_pkg kmod-rtl8189es "WIFI"
+	record_full "WIFI=INTENTIONALLY_EXCLUDED"
+	record_full "BUDDHA_PROFILE_VERIFY=PASS"
+}
+
 test -f "$ARTIFACT_DIR/NanoPi-K1-Plus-sunxi-cortexa53.img.gz"
 test -f "$ARTIFACT_DIR/sun50i-h5-nanopi-k1-plus.dtb"
 test -f "$ARTIFACT_DIR/sun50i-h5-nanopi-k1-plus.compiled.dts"
@@ -428,6 +520,7 @@ case "$PROFILE_KEY" in
 	base) verify_base_profile ;;
 	full) verify_full_profile ;;
 	wifi_compat) verify_wifi_compat_profile ;;
+	buddha) verify_buddha_profile ;;
 esac
 
 gzip -t "$ARTIFACT_DIR/NanoPi-K1-Plus-sunxi-cortexa53.img.gz"
