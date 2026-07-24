@@ -365,26 +365,10 @@ verify_buddha_profile() {
 		luci-app-samba4 \
 		openssh-sftp-server \
 		openssh-sftp-client \
-		tailscale \
-		luci-app-tailscale \
-		zerotier \
-		luci-app-zerotier \
 		luci-app-ddns \
 		ddns-scripts \
 		ddns-scripts-services \
 		ddns-scripts-utils \
-		luci-app-homeproxy \
-		luci-app-mosdns \
-		luci-app-nikki \
-		luci-app-openclash \
-		luci-app-passwall \
-		luci-app-passwall2 \
-		luci-app-ssr-plus \
-		luci-app-vlmcsd \
-		luci-app-momo \
-		netdata \
-		netperf \
-		bind-ddns-confgen \
 		fdisk \
 		cfdisk \
 		htop \
@@ -395,8 +379,7 @@ verify_buddha_profile() {
 
 	for pkg in \
 		luci-theme-bootstrap \
-		luci-theme-edge \
-		luci-theme-lightblue; do
+		luci-theme-argon; do
 		require_manifest_pkg "$pkg" "BUDDHA_THEMES"
 	done
 	record_full "BUDDHA_THEMES=PASS"
@@ -420,8 +403,7 @@ verify_buddha_profile() {
 		ddns-scripts-one \
 		ddns-scripts-pdns \
 		ddns-scripts-porkbun \
-		ddns-scripts-route53 \
-		ddns-scripts-transip; do
+		ddns-scripts-route53; do
 		require_manifest_pkg "$pkg" "DDNS_PROVIDERS"
 	done
 	record_full "DDNS_PROVIDERS=PASS"
