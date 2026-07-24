@@ -94,6 +94,21 @@ require_no_manifest_pkg() {
 	fi
 }
 
+resolve_image_files() {
+	image_candidates=$(
+		find "$ARTIFACT_DIR" -maxdepth 1 -type f \
+			\( \
+				-name 'NanoPi-K1-Plus-sunxi-cortexa53.img.gz' -o \
+				-name '*friendlyarm_nanopi-k1-plus*sdcard.img.gz' -o \
+				-name '*nanopi-k1-plus*sdcard.img.gz' \
+			\) \
+			-print |
+			sort
+	)
+	[ -n "$image_candidates" ] || fail "K1_PLUS_IMAGE"
+	printf '%s\n' "$image_candidates"
+}
+
 record_profile_header() {
 	record_full "PROFILE=$PROFILE_LABEL"
 }
@@ -416,7 +431,13 @@ verify_buddha_profile() {
 	record_full "BUDDHA_PROFILE_VERIFY=PASS"
 }
 
-test -f "$ARTIFACT_DIR/NanoPi-K1-Plus-sunxi-cortexa53.img.gz"
+IMAGE_FILES=$(resolve_image_files)
+record "K1_PLUS_IMAGE=PASS"
+printf '%s\n' "$IMAGE_FILES" | while IFS= read -r image_file; do
+	[ -n "$image_file" ] || continue
+	record "K1_PLUS_IMAGE_FILE=$(basename "$image_file")"
+done
+
 test -f "$ARTIFACT_DIR/sun50i-h5-nanopi-k1-plus.dtb"
 test -f "$ARTIFACT_DIR/sun50i-h5-nanopi-k1-plus.compiled.dts"
 test -f "$ARTIFACT_DIR/sha256sums"
@@ -523,7 +544,10 @@ case "$PROFILE_KEY" in
 	buddha) verify_buddha_profile ;;
 esac
 
-gzip -t "$ARTIFACT_DIR/NanoPi-K1-Plus-sunxi-cortexa53.img.gz"
+printf '%s\n' "$IMAGE_FILES" | while IFS= read -r image_file; do
+	[ -n "$image_file" ] || continue
+	gzip -t "$image_file"
+done
 (cd "$ARTIFACT_DIR" && sha256sum -c sha256sums)
 record "STAGE_A_DISPLAY_VERIFY=PASS"
 echo 'IMAGE_VERIFY=PASS'

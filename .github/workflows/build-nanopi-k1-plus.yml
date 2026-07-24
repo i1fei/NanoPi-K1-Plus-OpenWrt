@@ -178,9 +178,21 @@ jobs:
             sun50i-h5-nanopi-k1-plus.dtb \
             sun50i-h5-nanopi-k1-plus.compiled.dts \
             kernel.config \
-            stage-a-display-validation.txt; do
+            openwrt.config \
+            sha256sums \
+            uEnv-a64.txt \
+            sunxi-inittab \
+            k1-plus-mmc-cross-mount-policy \
+            k1-plus-wifi-compat-lan-policy \
+            stage-a-display-validation.txt \
+            base-profile-manifest-validation.txt \
+            full-profile-manifest-validation.txt \
+            wifi-compat-profile-manifest-validation.txt \
+            buddha-profile-manifest-validation.txt; do
             [ -f ".work/artifact/$file" ] && cp ".work/artifact/$file" ".work/failure/$file"
           done
+          find .work/artifact -maxdepth 1 -type f \( -name '*.img' -o -name '*.img.gz' -o -name '*.manifest' \) \
+            -exec cp {} .work/failure/ \;
           df -h > .work/failure/disk-space.txt
 
       - name: Upload successful firmware
