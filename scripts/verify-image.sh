@@ -385,7 +385,6 @@ verify_buddha_profile() {
 	record_full "BUDDHA_THEMES=PASS"
 
 	for pkg in \
-		ddns-scripts_aliyun \
 		ddns-scripts-cloudflare \
 		ddns-scripts-cnkuai \
 		ddns-scripts-digitalocean \
