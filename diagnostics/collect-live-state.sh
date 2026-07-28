@@ -53,11 +53,15 @@ capture iw_dev iw dev
 capture iw_phy iw phy
 capture rfkill rfkill list
 capture opkg_list_installed opkg list-installed
+capture apk_list_installed apk list --installed
+capture apk_info_installed apk info -vv
 capture ps ps w
 
 capture_sh sys_class_ieee80211 "find /sys/class/ieee80211 -maxdepth 3 -type l -o -type f 2>/dev/null | sort"
 capture_sh sys_bus_sdio "for d in /sys/bus/sdio/devices/*; do [ -d \"\$d\" ] || continue; echo \"===== \$d =====\"; [ -f \"\$d/uevent\" ] && cat \"\$d/uevent\"; done"
 capture_sh sys_bus_platform_wireless "find /sys/devices/platform -maxdepth 5 \\( -iname '*wifi*' -o -iname '*mmc*' -o -iname '*rtl8189*' \\) 2>/dev/null | sort"
+capture_sh rtl8189es_probe "for m in rtl8189es 8189es; do echo \"===== modinfo \$m =====\"; modinfo \"\$m\" 2>/dev/null || true; done; echo '===== /etc/modules.d/rtl8189es ====='; cat /etc/modules.d/rtl8189es 2>/dev/null || true"
+capture_sh module_aliases_wifi "for f in /lib/modules/*/modules.alias /lib/modules/*/modules.dep; do [ -f \"\$f\" ] || continue; echo \"===== \$f =====\"; grep -Ei '8189|024c|8179|sdio' \"\$f\" || true; done"
 
 copy_if_exists /etc/openwrt_release openwrt_release
 copy_if_exists /etc/os-release os-release

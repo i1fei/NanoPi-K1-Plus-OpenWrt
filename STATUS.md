@@ -1,5 +1,19 @@
 # Status
 
+Update 2026-07-28:
+
+The latest available live-state captures show the onboard SDIO Wi-Fi card is
+enumerated as `SDIO_ID=024C:8179` with `MODALIAS=sdio:c07v024Cd8179`, but the
+running image had no `/etc/modules.d/rtl8189es` entry and `lsmod` did not show
+`rtl8189es`. Treat that result as "SDIO bus works, tested image did not load the
+RTL8189ES driver", not as a DTS failure.
+
+Next Wi-Fi test must use the `wifi_compat` profile, which selects
+`kmod-rtl8189es`, or manually check `modprobe rtl8189es` on a matching image.
+Collect `/sys/bus/sdio/devices/*/vendor`, `/sys/bus/sdio/devices/*/device`,
+`/sys/bus/sdio/devices/*/modalias`, `lsmod`, `/etc/modules.d/rtl8189es`,
+`modinfo rtl8189es`, and `/lib/modules/*/modules.alias`.
+
 最后更新：2026-07-13
 
 | 阶段 | 状态 | 说明 |
