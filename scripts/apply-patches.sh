@@ -22,6 +22,14 @@ for patch in \
 	echo "APPLIED $(basename "$patch")"
 done
 
+if [ "$PATCH_MODE" = "wifi_compat_v2" ]; then
+	patch="$PATCH_DIR/007-stabilize-k1-plus-rtl8189es-radio.patch"
+	[ -f "$patch" ] || { echo "missing patch: $patch" >&2; exit 1; }
+	git -C "$SOURCE_DIR" apply --check "$patch"
+	git -C "$SOURCE_DIR" apply "$patch"
+	echo "APPLIED $(basename "$patch")"
+fi
+
 if [ "$PATCH_MODE" = "wifi_compat" ]; then
 	for patch in \
 		"$PATCH_DIR/007-stabilize-k1-plus-rtl8189es-radio.patch" \

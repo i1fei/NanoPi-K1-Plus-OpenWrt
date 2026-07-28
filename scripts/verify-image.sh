@@ -23,6 +23,11 @@ case "$PROFILE" in
 		PROFILE_LABEL=WIFI_COMPAT
 		PROFILE_VALIDATION_FILE="$ARTIFACT_DIR/wifi-compat-profile-manifest-validation.txt"
 		;;
+	wifi_compat_v2)
+		PROFILE_KEY=wifi_compat_v2
+		PROFILE_LABEL=WIFI_COMPAT_V2
+		PROFILE_VALIDATION_FILE="$ARTIFACT_DIR/wifi-compat-v2-profile-manifest-validation.txt"
+		;;
 	buddha)
 		PROFILE_KEY=buddha
 		PROFILE_LABEL=BUDDHA
@@ -92,6 +97,15 @@ require_no_manifest_pkg() {
 	if grep -Eq "^$1([[:space:]]|$)" "$manifest"; then
 		fail_full "$2"
 	fi
+}
+
+require_rtl8189es_artifacts() {
+	require_file "$ARTIFACT_DIR/rtl8189es.ko" "RTL8189ES_KO"
+	require_file "$ARTIFACT_DIR/rtl8189es.build-check.txt" "RTL8189ES_BUILD_CHECK"
+	require_grep "$ARTIFACT_DIR/rtl8189es.build-check.txt" 'rtl8189es\.ko=' "RTL8189ES_BUILD_CHECK"
+	require_file "$ARTIFACT_DIR/rtl8189es.modules.d" "RTL8189ES_MODULES_D"
+	require_grep "$ARTIFACT_DIR/rtl8189es.modules.d" '^rtl8189es$' "RTL8189ES_MODULES_D"
+	record_full "RTL8189ES_AUTOLOAD=PASS"
 }
 
 resolve_image_files() {
@@ -308,6 +322,7 @@ verify_wifi_compat_profile() {
 		require_manifest_pkg "$pkg" "WIFI_STACK"
 	done
 	record_full "WIFI_STACK=PASS"
+	require_rtl8189es_artifacts
 
 	for pkg in kmod-usb-hid kmod-usb-storage; do
 		require_manifest_pkg "$pkg" "USB_BASE"
@@ -342,6 +357,65 @@ verify_wifi_compat_profile() {
 	done
 	record_full "EXCLUDED_COMPONENTS=PASS"
 	record_full "WIFI_COMPAT_PROFILE_VERIFY=PASS"
+}
+
+verify_wifi_compat_v2_profile() {
+	record_profile_header
+	require_openwrt_config_line 'CONFIG_TARGET_ROOTFS_PARTSIZE=1024' "ROOTFS_PARTSIZE"
+	record "ROOTFS_PARTSIZE=1024"
+	record_full "ROOTFS_PARTSIZE=1024"
+
+	for pkg in luci luci-app-package-manager; do
+		require_manifest_pkg "$pkg" "LUCI"
+	done
+	record_full "LUCI=PASS"
+
+	require_manifest_pkg luci-i18n-base-zh-cn "LUCI_ZH_CN"
+	record_full "LUCI_ZH_CN=PASS"
+
+	for pkg in \
+		kmod-rtl8189es \
+		wpad-openssl \
+		wireless-regdb \
+		iwinfo \
+		rpcd-mod-iwinfo; do
+		require_manifest_pkg "$pkg" "WIFI_STACK"
+	done
+	record_full "WIFI_STACK=PASS"
+	require_rtl8189es_artifacts
+
+	for pkg in kmod-usb-hid kmod-usb-storage; do
+		require_manifest_pkg "$pkg" "USB_BASE"
+	done
+	record_full "USB_BASE=PASS"
+
+	for pkg in kmod-fs-ext4 kmod-fs-vfat kmod-fs-exfat kmod-fs-ntfs3; do
+		require_manifest_pkg "$pkg" "FILESYSTEMS"
+	done
+	record_full "FILESYSTEMS=PASS"
+
+	for pkg in nano curl wget-ssl htop ethtool iperf3 usbutils evtest libdrm-tests; do
+		require_manifest_pkg "$pkg" "HARDWARE_TOOLS"
+	done
+	record_full "HARDWARE_TOOLS=PASS"
+
+	if [ -f "$ARTIFACT_DIR/k1-plus-wifi-compat-lan-policy" ]; then
+		fail_full "WIFI_COMPAT_LAN_POLICY"
+	fi
+	record_full "LAN_POLICY=NOT_SELECTED"
+
+	for pkg in \
+		luci-app-watchcat \
+		watchcat \
+		kmod-bluetooth \
+		kmod-btusb \
+		bluez-daemon \
+		openssh-server \
+		samba4-server; do
+		require_no_manifest_pkg "$pkg" "EXCLUDED_COMPONENTS"
+	done
+	record_full "EXCLUDED_COMPONENTS=PASS"
+	record_full "WIFI_COMPAT_V2_PROFILE_VERIFY=PASS"
 }
 
 verify_buddha_profile() {
@@ -522,6 +596,7 @@ case "$PROFILE_KEY" in
 	base) verify_base_profile ;;
 	full) verify_full_profile ;;
 	wifi_compat) verify_wifi_compat_profile ;;
+	wifi_compat_v2) verify_wifi_compat_v2_profile ;;
 	buddha) verify_buddha_profile ;;
 esac
 

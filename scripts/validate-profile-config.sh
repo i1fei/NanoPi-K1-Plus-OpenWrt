@@ -273,7 +273,7 @@ check_common
 case "$profile" in
 	base) check_base ;;
 	full) check_full ;;
-	wifi_compat) check_wifi_compat ;;
+	wifi_compat|wifi_compat_v2) check_wifi_compat ;;
 	buddha) check_buddha ;;
 	*) note_fail "unknown profile: $profile" ;;
 esac

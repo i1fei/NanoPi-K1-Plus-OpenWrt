@@ -74,6 +74,24 @@ done
 	cp "$SOURCE_DIR/target/linux/sunxi/base-files/etc/uci-defaults/98-k1-plus-wifi-compat-lan" \
 		"$ARTIFACT_DIR/k1-plus-wifi-compat-lan-policy"
 
+rtl8189es_list=$(mktemp)
+find "$SOURCE_DIR/build_dir" \
+	-type f \
+	-path '*/linux-sunxi_cortexa53/rtl8189es-*/rtl8189es.ko' \
+	-print |
+	sort > "$rtl8189es_list"
+rtl8189es_count=$(wc -l < "$rtl8189es_list" | tr -d '[:space:]')
+if [ "$rtl8189es_count" -gt 0 ]; then
+	rtl8189es_ko=$(sed -n '1p' "$rtl8189es_list")
+	printf 'rtl8189es.ko=%s\n' "$rtl8189es_ko" > "$ARTIFACT_DIR/rtl8189es.build-check.txt"
+	cp "$rtl8189es_ko" "$ARTIFACT_DIR/rtl8189es.ko"
+fi
+rm -f "$rtl8189es_list"
+
+[ -f "$SOURCE_DIR/staging_dir/target-aarch64_cortex-a53_musl/root-sunxi/etc/modules.d/rtl8189es" ] &&
+	cp "$SOURCE_DIR/staging_dir/target-aarch64_cortex-a53_musl/root-sunxi/etc/modules.d/rtl8189es" \
+		"$ARTIFACT_DIR/rtl8189es.modules.d"
+
 manifest=$(
 	find "$IMAGE_DIR" -maxdepth 2 -type f -name 'packages.manifest' -print |
 		sort |
