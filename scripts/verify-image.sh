@@ -404,6 +404,14 @@ verify_wifi_compat_v2_profile() {
 	fi
 	record_full "LAN_POLICY=NOT_SELECTED"
 
+	require_file "$ARTIFACT_DIR/k1-plus-wireless-config" "WIRELESS_CONFIG"
+	require_grep "$ARTIFACT_DIR/k1-plus-wireless-config" "^config wifi-device 'radio0'$" "WIRELESS_CONFIG"
+	require_grep "$ARTIFACT_DIR/k1-plus-wireless-config" "^[[:space:]]*option phy 'phy0'$" "WIRELESS_CONFIG"
+	if grep -Eq "^[[:space:]]*option path " "$ARTIFACT_DIR/k1-plus-wireless-config"; then
+		fail_full "WIRELESS_CONFIG_PATH"
+	fi
+	record_full "WIRELESS_CONFIG=PHY0_SINGLE_RADIO"
+
 	for pkg in \
 		luci-app-watchcat \
 		watchcat \

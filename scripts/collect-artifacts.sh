@@ -73,6 +73,9 @@ done
 [ -f "$SOURCE_DIR/target/linux/sunxi/base-files/etc/uci-defaults/98-k1-plus-wifi-compat-lan" ] &&
 	cp "$SOURCE_DIR/target/linux/sunxi/base-files/etc/uci-defaults/98-k1-plus-wifi-compat-lan" \
 		"$ARTIFACT_DIR/k1-plus-wifi-compat-lan-policy"
+[ -f "$SOURCE_DIR/files/etc/config/wireless" ] &&
+	cp "$SOURCE_DIR/files/etc/config/wireless" \
+		"$ARTIFACT_DIR/k1-plus-wireless-config"
 
 rtl8189es_list=$(mktemp)
 find "$SOURCE_DIR/build_dir" \

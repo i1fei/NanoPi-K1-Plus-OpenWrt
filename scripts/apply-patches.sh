@@ -30,6 +30,13 @@ if [ "$PATCH_MODE" = "wifi_compat_v2" ]; then
 	echo "APPLIED $(basename "$patch")"
 fi
 
+OVERLAY_DIR="$ROOT_DIR/overlays/$PATCH_MODE/files"
+if [ -d "$OVERLAY_DIR" ]; then
+	mkdir -p "$SOURCE_DIR/files"
+	cp -R "$OVERLAY_DIR/." "$SOURCE_DIR/files/"
+	echo "COPIED overlay files for $PATCH_MODE"
+fi
+
 if [ "$PATCH_MODE" = "wifi_compat" ]; then
 	for patch in \
 		"$PATCH_DIR/007-stabilize-k1-plus-rtl8189es-radio.patch" \
