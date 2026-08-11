@@ -210,39 +210,38 @@ check_wifi_compat() {
 
 check_buddha() {
 	require_value CONFIG_TARGET_ROOTFS_PARTSIZE 8192
+
+	# Keep this list aligned with configs/NanoPi_K1_Plus_buddha.config.  Earlier
+	# validation required proxy/remote packages that are intentionally excluded
+	# because they are not present in the pinned upstream snapshot.
 	for symbol in \
 		CONFIG_PACKAGE_luci \
 		CONFIG_PACKAGE_luci-app-package-manager \
 		CONFIG_PACKAGE_luci-i18n-base-zh-cn \
 		CONFIG_PACKAGE_dropbear \
 		CONFIG_PACKAGE_luci-ssl-openssl \
+		CONFIG_PACKAGE_openssl-util \
+		CONFIG_PACKAGE_luci-theme-argon \
+		CONFIG_PACKAGE_luci-app-argon-config \
+		CONFIG_PACKAGE_luci-theme-bootstrap \
 		CONFIG_PACKAGE_ttyd \
 		CONFIG_PACKAGE_luci-app-ttyd \
-		CONFIG_PACKAGE_luci-app-firewall \
+		CONFIG_PACKAGE_luci-app-commands \
 		CONFIG_PACKAGE_luci-app-filebrowser \
 		CONFIG_PACKAGE_luci-app-diskman \
+		CONFIG_PACKAGE_luci-app-firewall \
 		CONFIG_PACKAGE_samba4-server \
 		CONFIG_PACKAGE_luci-app-samba4 \
+		CONFIG_PACKAGE_wsdd2 \
 		CONFIG_PACKAGE_openssh-sftp-server \
 		CONFIG_PACKAGE_openssh-sftp-client \
-		CONFIG_PACKAGE_tailscale \
-		CONFIG_PACKAGE_luci-app-tailscale \
-		CONFIG_PACKAGE_zerotier \
-		CONFIG_PACKAGE_luci-app-zerotier \
-		CONFIG_PACKAGE_luci-app-homeproxy \
-		CONFIG_PACKAGE_luci-app-mosdns \
-		CONFIG_PACKAGE_luci-app-nikki \
-		CONFIG_PACKAGE_luci-app-openclash \
-		CONFIG_PACKAGE_luci-app-passwall \
-		CONFIG_PACKAGE_luci-app-passwall2 \
-		CONFIG_PACKAGE_luci-app-ssr-plus \
 		CONFIG_PACKAGE_luci-app-ddns \
 		CONFIG_PACKAGE_ddns-scripts \
 		CONFIG_PACKAGE_ddns-scripts-services \
 		CONFIG_PACKAGE_ddns-scripts-utils \
-		CONFIG_PACKAGE_netdata \
-		CONFIG_PACKAGE_netperf \
-		CONFIG_PACKAGE_bind-ddns-confgen \
+		CONFIG_PACKAGE_luci-app-statistics \
+		CONFIG_PACKAGE_luci-app-watchcat \
+		CONFIG_PACKAGE_watchcat \
 		CONFIG_PACKAGE_kmod-usb-storage \
 		CONFIG_PACKAGE_kmod-usb-storage-uas \
 		CONFIG_PACKAGE_kmod-usb-hid \
@@ -253,10 +252,29 @@ check_buddha() {
 		CONFIG_PACKAGE_kmod-usbip \
 		CONFIG_PACKAGE_kmod-usbip-client \
 		CONFIG_PACKAGE_kmod-usbip-server \
+		CONFIG_PACKAGE_kmod-usb-serial \
+		CONFIG_PACKAGE_kmod-usb-serial-ch341 \
+		CONFIG_PACKAGE_kmod-usb-serial-cp210x \
+		CONFIG_PACKAGE_kmod-usb-serial-ftdi \
+		CONFIG_PACKAGE_kmod-usb-serial-pl2303 \
+		CONFIG_PACKAGE_kmod-bluetooth \
+		CONFIG_PACKAGE_kmod-btusb \
+		CONFIG_PACKAGE_bluez-daemon \
+		CONFIG_PACKAGE_bluez-utils \
+		CONFIG_PACKAGE_bluez-utils-extra \
 		CONFIG_PACKAGE_fdisk \
 		CONFIG_PACKAGE_cfdisk \
+		CONFIG_PACKAGE_parted \
+		CONFIG_PACKAGE_lsblk \
 		CONFIG_PACKAGE_htop \
-		CONFIG_PACKAGE_usbutils; do
+		CONFIG_PACKAGE_usbutils \
+		CONFIG_PACKAGE_mmc-utils \
+		CONFIG_PACKAGE_i2c-tools \
+		CONFIG_PACKAGE_gpiod-tools \
+		CONFIG_PACKAGE_tcpdump \
+		CONFIG_PACKAGE_ip-full \
+		CONFIG_PACKAGE_lsof \
+		CONFIG_PACKAGE_strace; do
 		require_enabled "$symbol"
 	done
 

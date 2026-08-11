@@ -722,3 +722,29 @@ Next:
 
 Rebuild the `wifi_compat` image and retest first-boot wired access before
 re-enabling onboard AP startup.
+
+## K1 Plus Wi-Fi compatibility v2 final AP attempt
+
+Decision:
+
+Use `wifi_compat_v2` as the final isolated RTL8189ES AP restoration attempt.
+Keep recovery/Buddha images Wi-Fi-free and unchanged.
+
+Implementation:
+
+- `br-lan` keeps `eth0` and static `192.168.1.1`
+- one `phy0` / `radio0` wireless config is preseeded
+- AP is WPA2 with SSID `NanoPi-K1-Plus` and key `nanopi-k1plus`
+- AP remains disabled during early first boot
+- a K1 Plus-only bounded repair helper enables/restarts only `radio0` after a
+  wired-first delay
+
+Purpose:
+
+Avoid letting RTL8189ES/hostapd own early first-boot reachability while still
+replicating the official 4.14 lesson: explicit first-boot UCI policy plus an AP
+repair layer.
+
+Next:
+
+Build `wifi_compat_v2` in GitHub Actions and validate on a clean MicroSD boot.

@@ -1,0 +1,69 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+[ "$(board_name)" = "friendlyelec,nanopi-k1-plus" ] || exit 0
+[ -f /etc/modules.d/rtl8189es ] || exit 0
+[ -x /usr/sbin/hostapd ] || exit 0
+
+ula_prefix="$(uci -q get network.globals.ula_prefix || true)"
+
+cat > /etc/config/network <<EOF
+config interface 'loopback'
+	option device 'lo'
+	option proto 'static'
+	list ipaddr '127.0.0.1/8'
+
+config globals 'globals'
+	option ula_prefix '${ula_prefix}'
+
+config device
+	option name 'br-lan'
+	option type 'bridge'
+	list ports 'eth0'
+
+config interface 'lan'
+	option device 'br-lan'
+	option proto 'static'
+	option ipaddr '192.168.1.1'
+	option netmask '255.255.255.0'
+	option ip6assign '60'
+EOF
+
+cat > /etc/config/wireless <<'EOF'
+config wifi-device 'radio0'
+	option type 'mac80211'
+	option phy 'phy0'
+	option band '2g'
+	option channel '6'
+	option htmode 'HT20'
+	option country 'CN'
+	option disabled '1'
+
+config wifi-iface 'default_radio0'
+	option device 'radio0'
+	option network 'lan'
+	option mode 'ap'
+	option ssid 'NanoPi-K1-Plus'
+	option encryption 'psk2'
+	option key 'nanopi-k1plus'
+	option disabled '1'
+EOF
+
+uci -q commit network
+uci -q commit wireless
+
+if [ -x /etc/init.d/k1-plus-wifi-ap-repair ]; then
+	/etc/init.d/k1-plus-wifi-ap-repair enable
+fi
+
+# Preserve wired-first boot.  Only start the RTL8189ES AP after netifd has had
+# time to bring up br-lan/eth0, so a bad AP path does not own first-boot
+# management reachability.
+if [ -x /usr/bin/k1-plus-wifi-ap-repair ]; then
+	( sleep 45; /usr/bin/k1-plus-wifi-ap-repair firstboot ) >/dev/null 2>&1 &
+fi
+
+logger -t k1-plus "installed wifi_compat_v2 AP policy: br-lan eth0 + delayed radio0 WPA2"
+
+exit 0

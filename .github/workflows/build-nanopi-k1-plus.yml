@@ -184,6 +184,10 @@ jobs:
             sunxi-inittab \
             k1-plus-mmc-cross-mount-policy \
             k1-plus-wifi-compat-lan-policy \
+            k1-plus-wifi-compat-v2-policy \
+            k1-plus-wireless-config \
+            k1-plus-wifi-ap-repair \
+            k1-plus-wifi-ap-repair-init \
             rtl8189es.ko \
             rtl8189es.build-check.txt \
             rtl8189es.modules.d \

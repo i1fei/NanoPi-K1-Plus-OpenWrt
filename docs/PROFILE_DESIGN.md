@@ -33,7 +33,24 @@ Current hardware recovery state:
 - Anonymous cross mounting of the other MMC medium is disabled by default.
 - HDMI CMA is prepared, but HDMI runtime output is still untested.
 
-## Base Profile Goal
+## Current Final Attempt: Wi-Fi Compatibility v2
+
+`wifi_compat_v2` is now the intentional final AP restoration attempt, not a
+software-heavy image:
+
+- keep the recovery line separate and untouched
+- keep wired management at `br-lan` with `eth0` and `192.168.1.1`
+- preseed one `phy0` / `radio0` AP config, disabled during early first boot
+- after a wired-first delay, enable one WPA2 AP with SSID `NanoPi-K1-Plus` and
+  key `nanopi-k1plus`
+- add a bounded K1 Plus-only AP repair helper modeled on the official 4.14
+  `fix_wifi_ap.sh` concept
+
+The exit criteria remain hardware-only: first boot must keep wired access,
+expose exactly one visible AP, authenticate WPA2 clients, issue DHCP, and avoid
+`radio1` / `wlan1` churn.
+
+## Base Profile Goal:
 
 `configs/NanoPi_K1_Plus_base.config` is the stable daily baseline:
 
