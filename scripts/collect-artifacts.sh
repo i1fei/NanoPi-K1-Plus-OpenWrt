@@ -79,12 +79,6 @@ done
 [ -f "$SOURCE_DIR/files/etc/config/wireless" ] &&
 	cp "$SOURCE_DIR/files/etc/config/wireless" \
 		"$ARTIFACT_DIR/k1-plus-wireless-config"
-[ -f "$SOURCE_DIR/files/usr/bin/k1-plus-wifi-ap-repair" ] &&
-	cp "$SOURCE_DIR/files/usr/bin/k1-plus-wifi-ap-repair" \
-		"$ARTIFACT_DIR/k1-plus-wifi-ap-repair"
-[ -f "$SOURCE_DIR/files/etc/init.d/k1-plus-wifi-ap-repair" ] &&
-	cp "$SOURCE_DIR/files/etc/init.d/k1-plus-wifi-ap-repair" \
-		"$ARTIFACT_DIR/k1-plus-wifi-ap-repair-init"
 
 rtl8189es_list=$(mktemp)
 find "$SOURCE_DIR/build_dir" \

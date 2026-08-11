@@ -33,22 +33,21 @@ Current hardware recovery state:
 - Anonymous cross mounting of the other MMC medium is disabled by default.
 - HDMI CMA is prepared, but HDMI runtime output is still untested.
 
-## Current Final Attempt: Wi-Fi Compatibility v2
+## Current Safe Probe: Wi-Fi Compatibility v2
 
-`wifi_compat_v2` is now the intentional final AP restoration attempt, not a
-software-heavy image:
+`wifi_compat_v2` is now a recovery-safe RTL8189ES presence probe, not an
+automatic AP restoration image:
 
 - keep the recovery line separate and untouched
-- keep wired management at `br-lan` with `eth0` and `192.168.1.1`
-- preseed one `phy0` / `radio0` AP config, disabled during early first boot
-- after a wired-first delay, enable one WPA2 AP with SSID `NanoPi-K1-Plus` and
-  key `nanopi-k1plus`
-- add a bounded K1 Plus-only AP repair helper modeled on the official 4.14
-  `fix_wifi_ap.sh` concept
+- keep wired management directly on `eth0` with `192.168.1.1`
+- do not create `br-lan` in this profile
+- preseed one `phy0` / `radio0` AP template, disabled on boot
+- ship the RTL8189ES package and Wi-Fi tools for manual inspection
+- do not run `wifi up`, hostapd, or AP repair automatically
 
-The exit criteria remain hardware-only: first boot must keep wired access,
-expose exactly one visible AP, authenticate WPA2 clients, issue DHCP, and avoid
-`radio1` / `wlan1` churn.
+The previous automatic AP attempt wedged the real board's network path. The next
+exit criterion is deliberately narrower: first boot must keep wired access long
+enough to collect live RTL8189ES state before any AP experiment.
 
 ## Base Profile Goal:
 

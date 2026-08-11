@@ -280,14 +280,16 @@ Success is:
 
 ## Immediate Next Step
 
-The next implementation step should be:
+The next implementation step is now a safe rollback pass:
 
-1. finish the current Buddha build line separately
-2. create `wifi_compat_v2` as a minimal package profile
-3. implement the board-owned first-boot wireless generator
-4. test before touching modern shared runtime scripts
+1. keep `wifi_compat_v2` as a minimal package profile with RTL8189ES present
+2. keep LAN directly on `eth0` at `192.168.1.1`
+3. keep Wi-Fi config present but disabled
+4. do not run AP repair, hostapd, or `wifi up` automatically
+5. collect live RTL8189ES state over wired access before any AP experiment
 
-That is the lowest-risk path that matches what the evidence now proves.
+That is the lowest-risk path after the automatic AP attempt wedged the real
+board's network runtime.
 
 ## Exact Repository Touch Set For Implementation
 

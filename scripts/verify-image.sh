@@ -400,10 +400,13 @@ verify_wifi_compat_v2_profile() {
 	record_full "HARDWARE_TOOLS=PASS"
 
 	require_file "$ARTIFACT_DIR/k1-plus-wifi-compat-v2-policy" "WIFI_COMPAT_V2_POLICY"
-	require_grep "$ARTIFACT_DIR/k1-plus-wifi-compat-v2-policy" "^[[:space:]]*option name 'br-lan'$" "WIFI_COMPAT_V2_POLICY"
-	require_grep "$ARTIFACT_DIR/k1-plus-wifi-compat-v2-policy" "^[[:space:]]*list ports 'eth0'$" "WIFI_COMPAT_V2_POLICY"
+	require_grep "$ARTIFACT_DIR/k1-plus-wifi-compat-v2-policy" "^[[:space:]]*option device 'eth0'$" "WIFI_COMPAT_V2_POLICY"
 	require_grep "$ARTIFACT_DIR/k1-plus-wifi-compat-v2-policy" "^[[:space:]]*option ipaddr '192\\.168\\.1\\.1'$" "WIFI_COMPAT_V2_POLICY"
-	record_full "LAN_POLICY=BR_LAN_ETH0_STATIC_192.168.1.1"
+	if grep -Ev '^[[:space:]]*#' "$ARTIFACT_DIR/k1-plus-wifi-compat-v2-policy" |
+		grep -Eq "^[[:space:]]*option name 'br-lan'$|^[[:space:]]*list ports 'eth0'$|wifi up|/usr/sbin/hostapd|k1-plus-wifi-ap-repair"; then
+		fail_full "WIFI_COMPAT_V2_POLICY_SAFE"
+	fi
+	record_full "LAN_POLICY=DIRECT_ETH0_STATIC_192.168.1.1"
 
 	require_file "$ARTIFACT_DIR/k1-plus-wireless-config" "WIRELESS_CONFIG"
 	require_grep "$ARTIFACT_DIR/k1-plus-wireless-config" "^config wifi-device 'radio0'$" "WIRELESS_CONFIG"
@@ -414,12 +417,8 @@ verify_wifi_compat_v2_profile() {
 	if grep -Eq "^[[:space:]]*option path " "$ARTIFACT_DIR/k1-plus-wireless-config"; then
 		fail_full "WIRELESS_CONFIG_PATH"
 	fi
-	record_full "WIRELESS_CONFIG=PHY0_SINGLE_RADIO_WPA2_AP"
-
-	require_file "$ARTIFACT_DIR/k1-plus-wifi-ap-repair" "WIFI_AP_REPAIR"
-	require_grep "$ARTIFACT_DIR/k1-plus-wifi-ap-repair" 'while \[ "\$try" -le 6 \]' "WIFI_AP_REPAIR"
-	require_grep "$ARTIFACT_DIR/k1-plus-wifi-ap-repair" 'killall hostapd' "WIFI_AP_REPAIR"
-	record_full "WIFI_AP_REPAIR=BOUNDED_K1_ONLY"
+	record_full "WIRELESS_CONFIG=PHY0_SINGLE_RADIO_DISABLED_WPA2_AP_TEMPLATE"
+	record_full "WIFI_AP_REPAIR=NOT_SELECTED"
 
 	for pkg in \
 		luci-app-watchcat \
