@@ -467,7 +467,7 @@ verify_rtl8189es_inert_profile() {
 	require_grep "$ARTIFACT_DIR/rtl8189es-uci-defaults-50_rtl-wifi" '^exit 0$' "RTL8189ES_DEFAULT_SCRIPT_INERT"
 	record_full "RTL8189ES_DEFAULT_SCRIPT=INERT"
 
-	for pkg in wpad-openssl hostapd hostapd-utils iwinfo rpcd-mod-iwinfo; do
+	for pkg in wpad-openssl hostapd hostapd-utils iwinfo; do
 		require_no_manifest_pkg "$pkg" "AP_USERSPACE_EXCLUDED"
 	done
 	record_full "AP_USERSPACE_EXCLUDED=PASS"

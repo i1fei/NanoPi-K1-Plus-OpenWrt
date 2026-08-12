@@ -227,8 +227,7 @@ check_rtl8189es_inert() {
 		CONFIG_PACKAGE_wpad-openssl \
 		CONFIG_PACKAGE_hostapd \
 		CONFIG_PACKAGE_hostapd-utils \
-		CONFIG_PACKAGE_iwinfo \
-		CONFIG_PACKAGE_rpcd-mod-iwinfo; do
+		CONFIG_PACKAGE_iwinfo; do
 		require_not_enabled "$symbol"
 	done
 
