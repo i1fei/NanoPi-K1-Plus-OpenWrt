@@ -28,6 +28,11 @@ case "$PROFILE" in
 		PROFILE_LABEL=WIFI_COMPAT_V2
 		PROFILE_VALIDATION_FILE="$ARTIFACT_DIR/wifi-compat-v2-profile-manifest-validation.txt"
 		;;
+	rtl8189es_inert)
+		PROFILE_KEY=rtl8189es_inert
+		PROFILE_LABEL=RTL8189ES_INERT
+		PROFILE_VALIDATION_FILE="$ARTIFACT_DIR/rtl8189es-inert-profile-manifest-validation.txt"
+		;;
 	buddha)
 		PROFILE_KEY=buddha
 		PROFILE_LABEL=BUDDHA
@@ -434,6 +439,50 @@ verify_wifi_compat_v2_profile() {
 	record_full "WIFI_COMPAT_V2_PROFILE_VERIFY=PASS"
 }
 
+verify_rtl8189es_inert_profile() {
+	record_profile_header
+	require_openwrt_config_line 'CONFIG_TARGET_ROOTFS_PARTSIZE=4096' "ROOTFS_PARTSIZE"
+	record "ROOTFS_PARTSIZE=4096"
+	record_full "ROOTFS_PARTSIZE=4096"
+
+	for pkg in luci luci-app-package-manager luci-i18n-base-zh-cn; do
+		require_manifest_pkg "$pkg" "LUCI"
+	done
+	record_full "LUCI=PASS"
+
+	for pkg in ttyd luci-app-ttyd samba4-server luci-app-samba4 ethtool iperf3 tcpdump ip-full; do
+		require_manifest_pkg "$pkg" "FULL_BASELINE_PAYLOAD"
+	done
+	record_full "FULL_BASELINE_PAYLOAD=PASS"
+
+	require_manifest_pkg kmod-rtl8189es "RTL8189ES"
+	record_full "RTL8189ES=PASS"
+	require_rtl8189es_artifacts
+
+	require_file "$ARTIFACT_DIR/rtl8189es-uci-defaults-50_rtl-wifi" "RTL8189ES_DEFAULT_SCRIPT"
+	if grep -Eq 'sed -i|ip link set dev wlan0 up|ip link show dev wlan0|wifi up|hostapd' \
+		"$ARTIFACT_DIR/rtl8189es-uci-defaults-50_rtl-wifi"; then
+		fail_full "RTL8189ES_DEFAULT_SCRIPT_INERT"
+	fi
+	require_grep "$ARTIFACT_DIR/rtl8189es-uci-defaults-50_rtl-wifi" '^exit 0$' "RTL8189ES_DEFAULT_SCRIPT_INERT"
+	record_full "RTL8189ES_DEFAULT_SCRIPT=INERT"
+
+	for pkg in wpad-openssl hostapd hostapd-utils iwinfo rpcd-mod-iwinfo; do
+		require_no_manifest_pkg "$pkg" "AP_USERSPACE_EXCLUDED"
+	done
+	record_full "AP_USERSPACE_EXCLUDED=PASS"
+
+	if [ -f "$ARTIFACT_DIR/k1-plus-wireless-config" ] || \
+		[ -f "$ARTIFACT_DIR/k1-plus-wifi-compat-lan-policy" ] || \
+		[ -f "$ARTIFACT_DIR/k1-plus-wifi-compat-v2-policy" ]; then
+		fail_full "NO_WIFI_OVERLAY_OR_NETWORK_REWRITE"
+	fi
+	record_full "NO_WIFI_OVERLAY_OR_NETWORK_REWRITE=PASS"
+	record_full "LAN_POLICY=BOARD_D_ETH0_CONFIG_GENERATE"
+	record_full "CFG80211_DEPS=EXPECTED_WITH_RTL8189ES"
+	record_full "RTL8189ES_INERT_PROFILE_VERIFY=PASS"
+}
+
 verify_buddha_profile() {
 	record_profile_header
 	require_openwrt_config_line 'CONFIG_TARGET_ROOTFS_PARTSIZE=8192' "ROOTFS_PARTSIZE"
@@ -613,6 +662,7 @@ case "$PROFILE_KEY" in
 	full) verify_full_profile ;;
 	wifi_compat) verify_wifi_compat_profile ;;
 	wifi_compat_v2) verify_wifi_compat_v2_profile ;;
+	rtl8189es_inert) verify_rtl8189es_inert_profile ;;
 	buddha) verify_buddha_profile ;;
 esac
 

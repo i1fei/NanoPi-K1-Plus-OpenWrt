@@ -208,6 +208,37 @@ check_wifi_compat() {
 	echo "WATCHCAT=EXCLUDED" >> "$resolution"
 }
 
+check_rtl8189es_inert() {
+	require_value CONFIG_TARGET_ROOTFS_PARTSIZE 4096
+	for symbol in \
+		CONFIG_PACKAGE_luci-ssl-openssl \
+		CONFIG_PACKAGE_luci-i18n-base-zh-cn \
+		CONFIG_PACKAGE_ttyd \
+		CONFIG_PACKAGE_luci-app-ttyd \
+		CONFIG_PACKAGE_samba4-server \
+		CONFIG_PACKAGE_luci-app-samba4 \
+		CONFIG_PACKAGE_kmod-bluetooth \
+		CONFIG_PACKAGE_kmod-btusb; do
+		require_enabled "$symbol"
+	done
+	require_enabled CONFIG_PACKAGE_kmod-rtl8189es
+
+	for symbol in \
+		CONFIG_PACKAGE_wpad-openssl \
+		CONFIG_PACKAGE_hostapd \
+		CONFIG_PACKAGE_hostapd-utils \
+		CONFIG_PACKAGE_iwinfo \
+		CONFIG_PACKAGE_rpcd-mod-iwinfo; do
+		require_not_enabled "$symbol"
+	done
+
+	echo "RTL8189ES_DRIVER=SELECTED" >> "$resolution"
+	echo "RTL8189ES_PACKAGE_DEFAULT=PATCHED_INERT" >> "$resolution"
+	echo "WIFI_AP_STACK=NOT_SELECTED" >> "$resolution"
+	echo "LAN_POLICY=BOARD_D_ETH0_CONFIG_GENERATE" >> "$resolution"
+	echo "CFG80211_DEPS=EXPECTED_WITH_RTL8189ES" >> "$resolution"
+}
+
 check_buddha() {
 	require_value CONFIG_TARGET_ROOTFS_PARTSIZE 8192
 
@@ -292,6 +323,7 @@ case "$profile" in
 	base) check_base ;;
 	full) check_full ;;
 	wifi_compat|wifi_compat_v2) check_wifi_compat ;;
+	rtl8189es_inert) check_rtl8189es_inert ;;
 	buddha) check_buddha ;;
 	*) note_fail "unknown profile: $profile" ;;
 esac

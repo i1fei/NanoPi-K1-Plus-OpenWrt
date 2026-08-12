@@ -189,11 +189,13 @@ jobs:
             rtl8189es.ko \
             rtl8189es.build-check.txt \
             rtl8189es.modules.d \
+            rtl8189es-uci-defaults-50_rtl-wifi \
             stage-a-display-validation.txt \
             base-profile-manifest-validation.txt \
             full-profile-manifest-validation.txt \
             wifi-compat-profile-manifest-validation.txt \
             wifi-compat-v2-profile-manifest-validation.txt \
+            rtl8189es-inert-profile-manifest-validation.txt \
             buddha-profile-manifest-validation.txt; do
             [ -f ".work/artifact/$file" ] && cp ".work/artifact/$file" ".work/failure/$file"
           done

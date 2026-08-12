@@ -98,6 +98,10 @@ rm -f "$rtl8189es_list"
 	cp "$SOURCE_DIR/staging_dir/target-aarch64_cortex-a53_musl/root-sunxi/etc/modules.d/rtl8189es" \
 		"$ARTIFACT_DIR/rtl8189es.modules.d"
 
+[ -f "$SOURCE_DIR/package/kernel/rtl8189es/files/50_rtl-wifi" ] &&
+	cp "$SOURCE_DIR/package/kernel/rtl8189es/files/50_rtl-wifi" \
+		"$ARTIFACT_DIR/rtl8189es-uci-defaults-50_rtl-wifi"
+
 manifest=$(
 	find "$IMAGE_DIR" -maxdepth 2 -type f -name 'packages.manifest' -print |
 		sort |
