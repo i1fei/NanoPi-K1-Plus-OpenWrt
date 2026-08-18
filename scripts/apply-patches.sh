@@ -30,6 +30,15 @@ if [ "$PATCH_MODE" = "wifi_compat_v2" ] || [ "$PATCH_MODE" = "rtl8189es_inert" ]
 	echo "APPLIED $(basename "$patch")"
 fi
 
+# v3: additional delayed-inert patch on top of 007
+if [ "$PATCH_MODE" = "rtl8189es_inert_v3" ]; then
+	patch="$PATCH_DIR/011-v3-delayed-inert-rtl8189es-wifi.patch"
+	[ -f "$patch" ] || { echo "missing patch: $patch" >&2; exit 1; }
+	git -C "$SOURCE_DIR" apply --check "$patch"
+	git -C "$SOURCE_DIR" apply "$patch"
+	echo "APPLIED $(basename "$patch")"
+fi
+
 OVERLAY_DIR="$ROOT_DIR/overlays/$PATCH_MODE/files"
 if [ -d "$OVERLAY_DIR" ]; then
 	mkdir -p "$SOURCE_DIR/files"

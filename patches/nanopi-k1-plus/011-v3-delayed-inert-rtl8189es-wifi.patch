@@ -1,0 +1,29 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: NanoPi K1 Plus OpenWrt project <noreply@example.invalid>
+Date: Wed, 17 Aug 2026 00:00:00 +0800
+Subject: [PATCH] rtl8189es: v3 delayed inert — sleep 5 before exit
+
+Hypothesis: 50_rtl-wifi executes during early boot and interrupts netifd
+initialization (br-lan setup). By adding a 5-second delay before `exit 0`,
+we let the network stack finish its first boot initialization before the
+rtl8189es package script runs.
+
+This isolates the "too fast" variable from the previous inert version that
+was already刷了 and found eth0 dead after switching to DHCP.
+
+---
+ package/kernel/rtl8189es/files/50_rtl-wifi | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/package/kernel/rtl8189es/files/50_rtl-wifi b/package/kernel/rtl8189es/files/50_rtl-wifi
+index 222222222222..333333333333 100644
+--- a/package/kernel/rtl8189es/files/50_rtl-wifi
++++ b/package/kernel/rtl8189es/files/50_rtl-wifi
+@@ -1,5 +1,6 @@
+ #!/bin/sh
+ 
++# Delay: let netifd finish first-boot br-lan initialization
++sleep 5
+ # NanoPi K1 Plus relies on the shared wifi generator instead of package-local
+ # rtl8189es boot mutations.
+ exit 0
