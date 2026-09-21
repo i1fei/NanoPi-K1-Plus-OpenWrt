@@ -1,0 +1,29 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: NanoPi K1 Plus OpenWrt project <noreply@example.invalid>
+Date: Mon, 21 Sep 2026 00:00:00 +0800
+Subject: [PATCH] hostap: keep the driver-created K1 Plus wlan0
+
+The RTL8189ES fullmac driver creates wlan0 itself. Deleting that interface
+before hostap reuses it can make the Linux 6.x RTM_SETLINK path block. Keep
+the existing target interface in place on NanoPi K1 Plus.
+
+---
+ .../network/config/wifi-scripts/files/usr/share/hostap/common.uc | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/package/network/config/wifi-scripts/files/usr/share/hostap/common.uc b/package/network/config/wifi-scripts/files/usr/share/hostap/common.uc
+--- a/package/network/config/wifi-scripts/files/usr/share/hostap/common.uc
++++ b/package/network/config/wifi-scripts/files/usr/share/hostap/common.uc
+@@ -86,7 +86,10 @@ function wdev_create(phy, name, data)
+ function wdev_create(phy, name, data)
+ {
+ 	let phyidx = int(readfile(`/sys/class/ieee80211/${phy}/index`));
+ 
+-	wdev_remove(name);
++	let board = json(readfile("/etc/board.json"));
++	let is_k1_plus = board?.model?.id == "friendlyelec,nanopi-k1-plus";
++	if (!(is_k1_plus && readfile(`/sys/class/net/${name}/ifindex`)))
++		wdev_remove(name);
+ 
+ 	if (!iftypes[data.mode])
+ 		return `Invalid mode: ${data.mode}`;

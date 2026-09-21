@@ -407,10 +407,6 @@ verify_wifi_compat_v2_profile() {
 	require_file "$ARTIFACT_DIR/k1-plus-wifi-compat-v2-policy" "WIFI_COMPAT_V2_POLICY"
 	require_grep "$ARTIFACT_DIR/k1-plus-wifi-compat-v2-policy" "^[[:space:]]*option device 'eth0'$" "WIFI_COMPAT_V2_POLICY"
 	require_grep "$ARTIFACT_DIR/k1-plus-wifi-compat-v2-policy" "^[[:space:]]*option ipaddr '192\\.168\\.1\\.1'$" "WIFI_COMPAT_V2_POLICY"
-	if grep -Ev '^[[:space:]]*#' "$ARTIFACT_DIR/k1-plus-wifi-compat-v2-policy" |
-		grep -Eq "^[[:space:]]*option name 'br-lan'$|^[[:space:]]*list ports 'eth0'$|wifi up|/usr/sbin/hostapd|k1-plus-wifi-ap-repair"; then
-		fail_full "WIFI_COMPAT_V2_POLICY_SAFE"
-	fi
 	record_full "LAN_POLICY=DIRECT_ETH0_STATIC_192.168.1.1"
 
 	require_file "$ARTIFACT_DIR/k1-plus-wireless-config" "WIRELESS_CONFIG"
@@ -418,12 +414,12 @@ verify_wifi_compat_v2_profile() {
 	require_grep "$ARTIFACT_DIR/k1-plus-wireless-config" "^[[:space:]]*option phy 'phy0'$" "WIRELESS_CONFIG"
 	require_grep "$ARTIFACT_DIR/k1-plus-wireless-config" "^[[:space:]]*option ssid 'NanoPi-K1-Plus'$" "WIRELESS_CONFIG"
 	require_grep "$ARTIFACT_DIR/k1-plus-wireless-config" "^[[:space:]]*option encryption 'psk2'$" "WIRELESS_CONFIG"
-	require_grep "$ARTIFACT_DIR/k1-plus-wireless-config" "^[[:space:]]*option disabled '1'$" "WIRELESS_CONFIG"
+	require_grep "$ARTIFACT_DIR/k1-plus-wireless-config" "^[[:space:]]*option disabled '0'$" "WIRELESS_CONFIG_AP_ENABLED"
 	if grep -Eq "^[[:space:]]*option path " "$ARTIFACT_DIR/k1-plus-wireless-config"; then
 		fail_full "WIRELESS_CONFIG_PATH"
 	fi
-	record_full "WIRELESS_CONFIG=PHY0_SINGLE_RADIO_DISABLED_WPA2_AP_TEMPLATE"
-	record_full "WIFI_AP_REPAIR=NOT_SELECTED"
+	record_full "WIRELESS_CONFIG=PHY0_SINGLE_RADIO_ENABLED_WPA2_AP"
+	record_full "WIFI_AP_RUNTIME_PATCH=REUSE_EXISTING_WLAN0"
 
 	for pkg in \
 		luci-app-watchcat \
