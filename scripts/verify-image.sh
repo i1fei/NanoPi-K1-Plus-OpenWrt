@@ -322,8 +322,7 @@ verify_wifi_compat_profile() {
 		kmod-rtl8189es \
 		wpad-openssl \
 		wireless-regdb \
-		iwinfo \
-		rpcd-mod-iwinfo; do
+		iwinfo; do
 		require_manifest_pkg "$pkg" "WIFI_STACK"
 	done
 	record_full "WIFI_STACK=PASS"
