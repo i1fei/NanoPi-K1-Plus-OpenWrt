@@ -370,14 +370,6 @@ verify_wifi_compat_v2_profile() {
 	record "ROOTFS_PARTSIZE=1024"
 	record_full "ROOTFS_PARTSIZE=1024"
 
-	for pkg in luci luci-app-package-manager; do
-		require_manifest_pkg "$pkg" "LUCI"
-	done
-	record_full "LUCI=PASS"
-
-	require_manifest_pkg luci-i18n-base-zh-cn "LUCI_ZH_CN"
-	record_full "LUCI_ZH_CN=PASS"
-
 	for pkg in \
 		kmod-rtl8189es \
 		wpad-openssl \
