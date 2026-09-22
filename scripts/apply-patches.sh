@@ -39,6 +39,11 @@ if [ "$PATCH_MODE" = "rtl8189es_inert_v3" ]; then
 	echo "APPLIED $(basename "$patch")"
 fi
 
+install -D -m 0644 \
+	"$PATCH_DIR/012-limit-rtl8189es-sdio-rx-dpc.patch" \
+	"$SOURCE_DIR/package/kernel/rtl8189es/patches/012-limit-rtl8189es-sdio-rx-dpc.patch"
+echo "STAGED 012-limit-rtl8189es-sdio-rx-dpc.patch as rtl8189es package patch"
+
 OVERLAY_DIR="$ROOT_DIR/overlays/$PATCH_MODE/files"
 if [ -d "$OVERLAY_DIR" ]; then
 	mkdir -p "$SOURCE_DIR/files"

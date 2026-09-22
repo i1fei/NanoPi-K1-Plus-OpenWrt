@@ -1,0 +1,65 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: NanoPi K1 Plus OpenWrt project <noreply@example.invalid>
+Date: Tue, 22 Sep 2026 00:00:00 +0800
+Subject: [PATCH] rtl8189es: bound SDIO RX DPC work per IRQ
+
+Limit one SDIO interrupt handler invocation to eight received packets and
+record the packet count and elapsed time.  The MMC SDIO IRQ thread holds the
+host claim until this handler returns, so an unbounded RX drain can starve
+other SDIO operations and keep network teardown under rtnl_lock blocked.
+
+Do not change the bips_processing wait in this diagnostic build; keeping that
+path unchanged makes the first runtime result attributable to RX DPC bounds.
+
+---
+ hal/rtl8188e/sdio/sdio_ops.c | 17 ++++++++++++++---
+ 1 file changed, 14 insertions(+), 3 deletions(-)
+
+diff --git a/hal/rtl8188e/sdio/sdio_ops.c b/hal/rtl8188e/sdio/sdio_ops.c
+index fba6b9f..3612666 100644
+--- a/hal/rtl8188e/sdio/sdio_ops.c
++++ b/hal/rtl8188e/sdio/sdio_ops.c
+@@ -1602,6 +1602,8 @@ void sd_int_dpc(PADAPTER padapter)
+ 
+ 	if (pHalData->sdio_hisr & SDIO_HISR_RX_REQUEST) {
+ 		struct recv_buf *precvbuf;
++		u32 rx_pkt_cnt = 0;
++		systime rx_start = rtw_get_current_time();
+ 
+ 		/* RTW_INFO("%s: RX Request, size=%d\n", __func__, phal->SdioRxFIFOSize); */
+ 		pHalData->sdio_hisr ^= SDIO_HISR_RX_REQUEST;
+@@ -1623,9 +1625,12 @@ void sd_int_dpc(PADAPTER padapter)
+ 
+ 				pHalData->SdioRxFIFOSize = 0;
+ 
+-				if (precvbuf)
++				if (precvbuf) {
+ 					sd_rxhandler(padapter, precvbuf);
+-				else
++					rx_pkt_cnt++;
++					if (rx_pkt_cnt >= 8)
++						break;
++				} else
+ 					break;
+ 			} else
+ 				break;
+@@ -1633,9 +1638,15 @@ void sd_int_dpc(PADAPTER padapter)
+ 		} while (0);
+ #else
+ 		}
+-		while (1)
++		while (rx_pkt_cnt < 8)
+ 			;
+ #endif
++		{
++			u32 rx_elapsed_ms = rtw_get_passing_time_ms(rx_start);
++			if (rx_pkt_cnt >= 8 || rx_elapsed_ms >= 1)
++				RTW_INFO("sdio_rx_dpc: packets=%u elapsed=%ums\n",
++					rx_pkt_cnt, rx_elapsed_ms);
++		}
+ #endif
+ 
+ 	}
+
+-- 
+2.43.0
