@@ -32,7 +32,7 @@ config wifi-device 'radio0'
 	option channel '6'
 	option htmode 'HT20'
 	option country 'CN'
-	option disabled '1'
+	option disabled '0'
 
 config wifi-iface 'default_radio0'
 	option device 'radio0'
@@ -41,15 +41,12 @@ config wifi-iface 'default_radio0'
 	option ssid 'NanoPi-K1-Plus'
 	option encryption 'psk2'
 	option key 'nanopi-k1plus'
-	option disabled '1'
+	option disabled '0'
 EOF
 
 uci -q commit network
 uci -q commit wireless
 
-# Deliberately do not run wifi up, hostapd, AP repair, or br-lan.  The previous
-# AP attempt wedged eth0/netifd on real hardware.  This image is a recovery-safe
-# driver-presence probe: keep wired LAN alive, then inspect RTL8189ES manually.
-logger -t k1-plus "installed wifi_compat_v2 safe policy: direct eth0 LAN, rtl8189es present, AP disabled"
+logger -t k1-plus "installed wifi_compat_v2 AP policy: direct eth0 LAN, RTL8189ES WPA2 AP enabled"
 
 exit 0

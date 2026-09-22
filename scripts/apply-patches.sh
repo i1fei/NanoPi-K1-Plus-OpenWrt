@@ -22,7 +22,7 @@ for patch in \
 	echo "APPLIED $(basename "$patch")"
 done
 
-if [ "$PATCH_MODE" = "wifi_compat_v2" ] || [ "$PATCH_MODE" = "rtl8189es_inert" ] || [ "$PATCH_MODE" = "rtl8189es_inert_v3" ]; then
+if [ "$PATCH_MODE" = "rtl8189es_inert" ] || [ "$PATCH_MODE" = "rtl8189es_inert_v3" ]; then
 	patch="$PATCH_DIR/007-stabilize-k1-plus-rtl8189es-radio.patch"
 	[ -f "$patch" ] || { echo "missing patch: $patch" >&2; exit 1; }
 	git -C "$SOURCE_DIR" apply --check "$patch"
@@ -51,12 +51,13 @@ if [ -d "$OVERLAY_DIR" ]; then
 	echo "COPIED overlay files for $PATCH_MODE"
 fi
 
-if [ "$PATCH_MODE" = "wifi_compat" ]; then
+if [ "$PATCH_MODE" = "wifi_compat" ] || [ "$PATCH_MODE" = "wifi_compat_v2" ]; then
 	for patch in \
 		"$PATCH_DIR/007-stabilize-k1-plus-rtl8189es-radio.patch" \
 		"$PATCH_DIR/008-fix-k1-plus-runtime-radio-generation.patch" \
 		"$PATCH_DIR/009-add-k1-plus-wifi-compat-policy.patch" \
-		"$PATCH_DIR/010-fix-k1-plus-single-phy-fallback.patch"; do
+		"$PATCH_DIR/010-fix-k1-plus-single-phy-fallback.patch" \
+		"$PATCH_DIR/012-reuse-k1-plus-existing-wlan0.patch"; do
 		[ -f "$patch" ] || { echo "missing patch: $patch" >&2; exit 1; }
 		git -C "$SOURCE_DIR" apply --check "$patch"
 		git -C "$SOURCE_DIR" apply "$patch"
