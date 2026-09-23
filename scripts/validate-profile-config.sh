@@ -211,7 +211,6 @@ check_wifi_compat() {
 check_rtl8189es_inert() {
 	require_value CONFIG_TARGET_ROOTFS_PARTSIZE 4096
 	for symbol in \
-		CONFIG_PACKAGE_luci-ssl-openssl \
 		CONFIG_PACKAGE_luci-i18n-base-zh-cn \
 		CONFIG_PACKAGE_ttyd \
 		CONFIG_PACKAGE_luci-app-ttyd \
