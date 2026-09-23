@@ -44,6 +44,13 @@ install -D -m 0644 \
 	"$SOURCE_DIR/package/kernel/rtl8189es/patches/012-limit-rtl8189es-sdio-rx-dpc.patch"
 echo "STAGED 012-limit-rtl8189es-sdio-rx-dpc.patch as rtl8189es package patch"
 
+if [ "$PATCH_MODE" = "rtl8189es_inert" ] || [ "$PATCH_MODE" = "rtl8189es_inert_v3" ]; then
+	install -D -m 0755 \
+		"$ROOT_DIR/diagnostics/collect-task-census.sh" \
+		"$SOURCE_DIR/files/root/collect-task-census.sh"
+	echo "STAGED collect-task-census.sh in /root"
+fi
+
 OVERLAY_DIR="$ROOT_DIR/overlays/$PATCH_MODE/files"
 if [ -d "$OVERLAY_DIR" ]; then
 	mkdir -p "$SOURCE_DIR/files"
