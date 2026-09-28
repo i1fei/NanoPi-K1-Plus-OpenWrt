@@ -1,0 +1,252 @@
+diff --git a/core/rtw_pwrctrl.c b/core/rtw_pwrctrl.c
+index 6ef90c4..a2711a3 100644
+--- a/core/rtw_pwrctrl.c
++++ b/core/rtw_pwrctrl.c
+@@ -78,6 +78,9 @@ exit_fw_ps_state:
+ void _ips_enter(_adapter *padapter)
+ {
+ 	struct pwrctrl_priv *pwrpriv = adapter_to_pwrctl(padapter);
++	systime ips_start = rtw_get_current_time();
++
++	RTW_INFO("RTW_TRACE: IPS_ENTER_BEGIN\n");
+ 
+ 	pwrpriv->bips_processing = _TRUE;
+ 
+@@ -102,6 +105,7 @@ void _ips_enter(_adapter *padapter)
+ 		pwrpriv->rf_pwrstate = rf_off;
+ 	}
+ 	pwrpriv->bips_processing = _FALSE;
++	RTW_INFO("RTW_TRACE: IPS_ENTER_END elapsed_ms=%u\n", rtw_get_passing_time_ms(ips_start));
+ 
+ }
+ 
+@@ -127,6 +131,9 @@ int _ips_leave(_adapter *padapter)
+ {
+ 	struct pwrctrl_priv *pwrpriv = adapter_to_pwrctl(padapter);
+ 	int result = _SUCCESS;
++	systime ips_start = rtw_get_current_time();
++
++	RTW_INFO("RTW_TRACE: IPS_LEAVE_BEGIN\n");
+ 
+ 	if ((pwrpriv->rf_pwrstate == rf_off) && (!pwrpriv->bips_processing)) {
+ 		pwrpriv->bips_processing = _TRUE;
+@@ -151,6 +158,7 @@ int _ips_leave(_adapter *padapter)
+ 		pwrpriv->bpower_saving = _FALSE;
+ 	}
+ 
++	RTW_INFO("RTW_TRACE: IPS_LEAVE_END elapsed_ms=%u result=%d\n", rtw_get_passing_time_ms(ips_start), result);
+ 	return result;
+ }
+ 
+diff --git a/hal/hal_intf.c b/hal/hal_intf.c
+index 7cf347f..08baa9d 100644
+--- a/hal/hal_intf.c
++++ b/hal/hal_intf.c
+@@ -568,10 +568,14 @@ uint	 rtw_hal_init(_adapter *padapter)
+ 	uint	status = _SUCCESS;
+ 	struct dvobj_priv *dvobj = adapter_to_dvobj(padapter);
+ 	int i;
++	systime hal_start = rtw_get_current_time();
+ 
++	RTW_INFO("RTW_TRACE: HAL_INIT_BEGIN path=netdev_or_ips\n");
+ 	halrf_set_rfsupportability(adapter_to_phydm(padapter));
+ 
+ 	status = padapter->hal_func.hal_init(padapter);
++	RTW_INFO("RTW_TRACE: HAL_INIT_END status=%u elapsed_ms=%u\n",
++		status, rtw_get_passing_time_ms(hal_start));
+ 
+ 	if (status == _SUCCESS) {
+ 		rtw_set_hw_init_completed(padapter, _TRUE);
+@@ -622,8 +626,12 @@ uint	 rtw_hal_init(_adapter *padapter)
+ uint rtw_hal_deinit(_adapter *padapter)
+ {
+ 	uint	status = _SUCCESS;
++	systime hal_start = rtw_get_current_time();
+ 
++	RTW_INFO("RTW_TRACE: HAL_DEINIT_BEGIN path=rtw_dev_unload_or_ips\n");
+ 	status = padapter->hal_func.hal_deinit(padapter);
++	RTW_INFO("RTW_TRACE: HAL_DEINIT_END status=%u elapsed_ms=%u\n",
++		status, rtw_get_passing_time_ms(hal_start));
+ 
+ 	if (status == _SUCCESS) {
+ 		rtw_led_control(padapter, LED_CTL_POWER_OFF);
+diff --git a/os_dep/linux/os_intfs.c b/os_dep/linux/os_intfs.c
+index 791c96a..f06f629 100644
+--- a/os_dep/linux/os_intfs.c
++++ b/os_dep/linux/os_intfs.c
+@@ -3561,6 +3561,7 @@ int _netdev_open(struct net_device *pnetdev)
+ 		rtw_clr_drv_stopped(padapter);
+ 		RTW_ENABLE_FUNC(padapter, DF_RX_BIT);
+ 		RTW_ENABLE_FUNC(padapter, DF_TX_BIT);
++		RTW_INFO("RTW_TRACE: HAL_INIT_PATH=netdev_open\n");
+ 		status = rtw_hal_init(padapter);
+ 		if (status == _FAIL)
+ 			goto netdev_open_error;
+@@ -3689,6 +3690,7 @@ int _netdev_open(struct net_device *pnetdev)
+ 		rtw_clr_surprise_removed(padapter);
+ 		rtw_clr_drv_stopped(padapter);
+ 
++		RTW_INFO("RTW_TRACE: HAL_INIT_PATH=netdev_open\n");
+ 		status = rtw_hal_init(padapter);
+ 		if (status == _FAIL) {
+ 			goto netdev_open_error;
+@@ -3854,6 +3856,7 @@ int  ips_netdrv_open(_adapter *padapter)
+ 	/* padapter->bup = _TRUE; */
+ #ifdef CONFIG_NEW_NETDEV_HDL
+ 	if (!rtw_is_hw_init_completed(padapter)) {
++		RTW_INFO("RTW_TRACE: HAL_INIT_PATH=ips_netdrv_open\n");
+ 		status = rtw_hal_init(padapter);
+ 		if (status == _FAIL) {
+ 			goto netdev_open_error;
+@@ -3861,6 +3864,7 @@ int  ips_netdrv_open(_adapter *padapter)
+ 		rtw_mi_hal_iface_init(padapter);
+ 	}
+ #else
++	RTW_INFO("RTW_TRACE: HAL_INIT_PATH=ips_netdrv_open\n");
+ 	status = rtw_hal_init(padapter);
+ 	if (status == _FAIL) {
+ 		goto netdev_open_error;
+@@ -3970,6 +3974,7 @@ int _pm_netdev_open(_adapter *padapter)
+ 	if (!rtw_is_hw_init_completed(padapter)) { // ips 
+ 		rtw_clr_surprise_removed(padapter);
+ 		rtw_clr_drv_stopped(padapter);
++		RTW_INFO("RTW_TRACE: HAL_INIT_PATH=netdev_open\n");
+ 		status = rtw_hal_init(padapter);
+ 		if (status == _FAIL)
+ 			goto netdev_open_error;
+@@ -4561,6 +4566,7 @@ void rtw_dev_unload(PADAPTER padapter)
+ #endif
+ 			{
+ 				/* amy modify 20120221 for power seq is different between driver open and ips */
++				RTW_INFO("RTW_TRACE: HAL_DEINIT_PATH=netdev_close->rtw_dev_unload\n");
+ 				rtw_hal_deinit(padapter);
+ 			}
+ 			rtw_set_surprise_removed(padapter);
+diff --git a/os_dep/linux/sdio_ops_linux.c b/os_dep/linux/sdio_ops_linux.c
+index ca50608..e42b311 100644
+--- a/os_dep/linux/sdio_ops_linux.c
++++ b/os_dep/linux/sdio_ops_linux.c
+@@ -34,6 +34,29 @@ static bool rtw_sdio_claim_host_needed(struct sdio_func *func)
+ 	return _TRUE;
+ }
+ 
++static systime rtw_sdio_claim_host_timed(struct sdio_func *func, const char *tag)
++{
++	systime request = rtw_get_current_time();
++	u32 wait_ms;
++
++	sdio_claim_host(func);
++	wait_ms = rtw_get_passing_time_ms(request);
++	if (wait_ms > 5) {
++		RTW_INFO("RTW_SDIO_CLAIM: request tag=%s\n", tag);
++		RTW_INFO("RTW_SDIO_CLAIM: acquired tag=%s wait_ms=%u\n", tag, wait_ms);
++	}
++	return request;
++}
++
++static void rtw_sdio_release_host_timed(struct sdio_func *func, systime request, const char *tag)
++{
++	u32 held_ms = rtw_get_passing_time_ms(request);
++
++	sdio_release_host(func);
++	if (held_ms > 5)
++		RTW_INFO("RTW_SDIO_CLAIM: released tag=%s held_ms=%u\n", tag, held_ms);
++}
++
+ inline void rtw_sdio_set_irq_thd(struct dvobj_priv *dvobj, _thread_hdl_ thd_hdl)
+ {
+ 	PSDIO_DATA sdio_data = &dvobj->intf_data;
+@@ -739,6 +758,7 @@ s32 sd_read(struct intf_hdl *pintfhdl, u32 addr, u32 cnt, void *pdata)
+ 	struct sdio_func *func;
+ 	bool claim_needed;
+ 	s32 err = -EPERM;
++	systime claim_start = 0;
+ 
+ 	padapter = pintfhdl->padapter;
+ 	psdiodev = pintfhdl->pintf_dev;
+@@ -752,10 +772,10 @@ s32 sd_read(struct intf_hdl *pintfhdl, u32 addr, u32 cnt, void *pdata)
+ 	claim_needed = rtw_sdio_claim_host_needed(func);
+ 
+ 	if (claim_needed)
+-		sdio_claim_host(func);
++		claim_start = rtw_sdio_claim_host_timed(func, __func__);
+ 	err = _sd_read(pintfhdl, addr, cnt, pdata);
+ 	if (claim_needed)
+-		sdio_release_host(func);
++		rtw_sdio_release_host_timed(func, claim_start, __func__);
+ 	return err;
+ }
+ 
+@@ -842,6 +862,7 @@ s32 sd_write(struct intf_hdl *pintfhdl, u32 addr, u32 cnt, void *pdata)
+ 	struct sdio_func *func;
+ 	bool claim_needed;
+ 	s32 err = -EPERM;
++	systime claim_start = 0;
+ 	padapter = pintfhdl->padapter;
+ 	psdiodev = pintfhdl->pintf_dev;
+ 	psdio = &psdiodev->intf_data;
+@@ -855,10 +876,10 @@ s32 sd_write(struct intf_hdl *pintfhdl, u32 addr, u32 cnt, void *pdata)
+ 	claim_needed = rtw_sdio_claim_host_needed(func);
+ 
+ 	if (claim_needed)
+-		sdio_claim_host(func);
++		claim_start = rtw_sdio_claim_host_timed(func, __func__);
+ 	err = _sd_write(pintfhdl, addr, cnt, pdata);
+ 	if (claim_needed)
+-		sdio_release_host(func);
++		rtw_sdio_release_host_timed(func, claim_start, __func__);
+ 	return err;
+ }
+ 
+@@ -1092,6 +1113,7 @@ int __must_check rtw_sdio_raw_read(struct dvobj_priv *d, unsigned int addr,
+ 	struct sdio_func *func;
+ 	bool claim_needed;
+ 	u32 offset, i;
++	systime claim_start = 0;
+ 
+ 
+ 	func = dvobj_to_sdio_func(d);
+@@ -1120,7 +1142,7 @@ int __must_check rtw_sdio_raw_read(struct dvobj_priv *d, unsigned int addr,
+ #endif /* RTW_SDIO_DUMP */
+ 
+ 	if (claim_needed)
+-		sdio_claim_host(func);
++		claim_start = rtw_sdio_claim_host_timed(func, __func__);
+ 
+ 	if (f0) {
+ 		offset = addr;
+@@ -1191,7 +1213,7 @@ int __must_check rtw_sdio_raw_read(struct dvobj_priv *d, unsigned int addr,
+ #endif /* DBG_SDIO */
+ 
+ 	if (claim_needed)
+-		sdio_release_host(func);
++		rtw_sdio_release_host_timed(func, claim_start, __func__);
+ 
+ #ifdef RTW_SDIO_DUMP
+ 	print_hex_dump(KERN_DEBUG, "rtw_sdio: READ ",
+@@ -1237,6 +1259,7 @@ int __must_check rtw_sdio_raw_write(struct dvobj_priv *d, unsigned int addr,
+ 	struct sdio_func *func;
+ 	bool claim_needed;
+ 	u32 offset, i;
++	systime claim_start = 0;
+ 
+ 
+ 	func = dvobj_to_sdio_func(d);
+@@ -1267,7 +1290,7 @@ int __must_check rtw_sdio_raw_write(struct dvobj_priv *d, unsigned int addr,
+ #endif /* RTW_SDIO_DUMP */
+ 
+ 	if (claim_needed)
+-		sdio_claim_host(func);
++		claim_start = rtw_sdio_claim_host_timed(func, __func__);
+ 
+ 	if (f0) {
+ 		offset = addr;
+@@ -1324,7 +1347,7 @@ int __must_check rtw_sdio_raw_write(struct dvobj_priv *d, unsigned int addr,
+ #endif /* DBG_SDIO */
+ 
+ 	if (claim_needed)
+-		sdio_release_host(func);
++		rtw_sdio_release_host_timed(func, claim_start, __func__);
+ 
+ 	if (WARN_ON(error)) {
+ 		dev_err(&func->dev, "%s: sdio write failed (%d)\n", __func__, error);

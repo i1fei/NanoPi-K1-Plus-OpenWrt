@@ -44,6 +44,16 @@ install -D -m 0644 \
 	"$SOURCE_DIR/package/kernel/rtl8189es/patches/012-limit-rtl8189es-sdio-rx-dpc.patch"
 echo "STAGED 012-limit-rtl8189es-sdio-rx-dpc.patch as rtl8189es package patch"
 
+install -D -m 0644 \
+	"$PATCH_DIR/013-timeout-rtl8189es-bips-close.patch" \
+	"$SOURCE_DIR/package/kernel/rtl8189es/patches/013-timeout-rtl8189es-bips-close.patch"
+echo "STAGED 013-timeout-rtl8189es-bips-close.patch as rtl8189es package patch"
+
+install -D -m 0644 \
+	"$PATCH_DIR/014-rtl8189es-runtime-trace.patch" \
+	"$SOURCE_DIR/package/kernel/rtl8189es/patches/014-rtl8189es-runtime-trace.patch"
+echo "STAGED 014-rtl8189es-runtime-trace.patch as rtl8189es package patch"
+
 if [ "$PATCH_MODE" = "rtl8189es_inert" ] || [ "$PATCH_MODE" = "rtl8189es_inert_v3" ]; then
 	install -D -m 0755 \
 		"$ROOT_DIR/diagnostics/collect-task-census.sh" \

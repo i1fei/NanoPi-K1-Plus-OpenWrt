@@ -42,6 +42,9 @@ only with the Wi-Fi compatibility profile:
 - repeated association/disassociation and P2P create/delete
 - eth0 regression checks during Wi-Fi activity
 
-This build contains only RX DPC packet-count/elapsed-time logging. It does not
-contain IPS, rtw_hal_init, or rtw_hal_deinit stage tracing, and it does not
-add a bips_processing timeout.
+The validation profile disables RTL8189ES IPS and driver power management to
+avoid the vendor bips_processing transition on this board. It also bounds the
+RX DPC work and adds a 5-second bips_processing close timeout. This is a
+stability build, not a power-saving configuration: if the timeout fires, the
+driver logs the failure and leaves the adapter powered instead of unloading
+hardware while the transition is incomplete.

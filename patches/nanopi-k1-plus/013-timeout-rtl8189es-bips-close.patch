@@ -1,0 +1,27 @@
+diff --git a/os_dep/linux/os_intfs.c b/os_dep/linux/os_intfs.c
+index a5b1d77..791c96a 100644
+--- a/os_dep/linux/os_intfs.c
++++ b/os_dep/linux/os_intfs.c
+@@ -4164,8 +4164,20 @@ static int netdev_close(struct net_device *pnetdev)
+ #endif
+ 
+ 	RTW_INFO("netdev_close, bips_processing=%d\n", pwrctl->bips_processing);
+-	while (pwrctl->bips_processing == _TRUE) /* waiting for ips_processing done before call rtw_dev_unload() */
+-		rtw_msleep_os(1);
++	{
++		u32 bips_wait_ms = 0;
++
++		while (pwrctl->bips_processing == _TRUE) {
++			rtw_msleep_os(1);
++			if (++bips_wait_ms >= 5000) {
++				RTW_ERR("RTW_TIMEOUT: netdev_close bips_processing waited %ums; adapter marked stopped, hardware unload skipped\n",
++					bips_wait_ms);
++				rtw_set_drv_stopped(padapter);
++				rtw_set_surprise_removed(padapter);
++				return 0;
++			}
++		}
++	}
+ 
+ 	rtw_dev_unload(padapter);
+ 	rtw_sdio_set_power(0);
