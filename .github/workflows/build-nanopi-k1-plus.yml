@@ -120,6 +120,64 @@ jobs:
           fi
           exit "$result"
 
+      - name: Capture RTL8189ES compile evidence
+        if: always()
+        run: |
+          set -eu
+          evidence="$GITHUB_WORKSPACE/.work/rtl8189es-diag-evidence"
+          mkdir -p "$evidence"
+          source_dir="$GITHUB_WORKSPACE/.work/openwrt/build_dir/target-aarch64_cortex-a53_musl/linux-sunxi_cortexa53"
+          source_root=$(find "$source_dir" -mindepth 1 -maxdepth 1 -type d -name 'rtl8189es-*' | sort | head -n 1 || true)
+          if [ -z "$source_root" ]; then
+            echo 'rtl8189es build directory not found' > "$evidence/status.txt"
+          else
+            printf 'source_root=%s\n' "$source_root" > "$evidence/status.txt"
+            find "$source_root" -type f \( \
+              -name 'os_intfs.o' -o -name 'sdio_ops_linux.o' -o -name 'sdio_ops.o' -o \
+              -name '.os_intfs.o.cmd' -o -name '.sdio_ops_linux.o.cmd' -o -name '.sdio_ops.o.cmd' -o \
+              -name 'rtl8189es.ko' \
+            \) -print | sort > "$evidence/file-list.txt"
+
+            for pair in \
+              'os_dep/linux/os_intfs.c os_dep/linux/os_intfs.o .os_intfs.o.cmd os_intfs.i' \
+              'os_dep/linux/sdio_ops_linux.c os_dep/linux/sdio_ops_linux.o .sdio_ops_linux.o.cmd sdio_ops_linux.i' \
+              'hal/rtl8188e/sdio/sdio_ops.c hal/rtl8188e/sdio/sdio_ops.o .sdio_ops.o.cmd sdio_ops.i'; do
+              set -- $pair
+              src="$source_root/$1"
+              obj="$source_root/$2"
+              cmdfile="$source_root/$(dirname "$2")/$3"
+              out="$evidence/$4"
+              [ -f "$obj" ] && cp "$obj" "$evidence/$(basename "$obj")"
+              [ -f "$cmdfile" ] && cp "$cmdfile" "$evidence/$(basename "$cmdfile")"
+              if [ -f "$src" ] && [ -f "$cmdfile" ]; then
+                cmd=$(sed -n 's/^cmd_.* := //p' "$cmdfile" | head -n 1)
+                if [ -n "$cmd" ]; then
+                  cmd=$(printf '%s\n' "$cmd" | sed 's/[[:space:]]-c[[:space:]]/ -E -dD /' | sed -E "s#[[:space:]]-o[[:space:]]+[^[:space:]]+\.o# -o '$out'#")
+                  (cd "$(dirname "$src")" && eval "$cmd") || printf 'preprocess failed: %s\n' "$src" >> "$evidence/status.txt"
+                else
+                  printf 'no command in %s\n' "$cmdfile" >> "$evidence/status.txt"
+                fi
+              fi
+            done
+
+            find "$source_root" -type f -name 'rtl8189es.ko' -print | sort > "$evidence/ko-candidates.txt"
+            while IFS= read -r ko; do
+              [ -f "$ko" ] || continue
+              name=$(printf '%s' "$ko" | sed "s#^$source_root/##; s#[/ ]#_#g")
+              cp "$ko" "$evidence/ko-$name"
+            done < "$evidence/ko-candidates.txt"
+            sha256sum "$evidence"/* > "$evidence/sha256sums" 2>/dev/null || true
+          fi
+
+      - name: Upload RTL8189ES compile evidence
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: rtl8189es-diag-evidence
+          path: .work/rtl8189es-diag-evidence
+          if-no-files-found: warn
+          include-hidden-files: true
+
       - name: List target output files
         if: always()
         run: |
