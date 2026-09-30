@@ -105,6 +105,20 @@ jobs:
               printf '%s=y\n' "$symbol" >> "$kernel_config_fragment"
             fi
           done
+          top_level_config=.config
+          [ -f "$top_level_config" ] || {
+            echo "missing top-level config: $top_level_config" >&2
+            exit 1
+          }
+          for symbol in CONFIG_KERNEL_PROVE_LOCKING; do
+            if grep -q "^${symbol}=" "$top_level_config"; then
+              sed -i "s/^${symbol}=.*/${symbol}=y/" "$top_level_config"
+            elif grep -q "^# ${symbol} is not set$" "$top_level_config"; then
+              sed -i "s/^# ${symbol} is not set$/${symbol}=y/" "$top_level_config"
+            else
+              printf '%s=y\n' "$symbol" >> "$top_level_config"
+            fi
+          done
           make defconfig
 
       - name: Download sources
