@@ -94,6 +94,17 @@ jobs:
           ./scripts/apply-patches.sh .work/openwrt "$GITHUB_WORKSPACE" "$patch_mode" | tee .work/patch.log
           cp "$config_path" .work/openwrt/.config
           cd .work/openwrt
+          kernel_config_fragment=target/linux/generic/config-6.18
+          [ -f "$kernel_config_fragment" ] || { echo "missing kernel config fragment: $kernel_config_fragment" >&2; exit 1; }
+          for symbol in CONFIG_DEBUG_KERNEL CONFIG_PROVE_LOCKING CONFIG_DEBUG_LOCK_ALLOC CONFIG_DEBUG_MUTEXES CONFIG_LOCKDEP; do
+            if grep -q "^${symbol}=" "$kernel_config_fragment"; then
+              sed -i "s/^${symbol}=.*/${symbol}=y/" "$kernel_config_fragment"
+            elif grep -q "^# ${symbol} is not set$" "$kernel_config_fragment"; then
+              sed -i "s/^# ${symbol} is not set$/${symbol}=y/" "$kernel_config_fragment"
+            else
+              printf '%s=y\n' "$symbol" >> "$kernel_config_fragment"
+            fi
+          done
           make defconfig
 
       - name: Download sources
