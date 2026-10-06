@@ -54,6 +54,11 @@ install -D -m 0644 \
 	"$SOURCE_DIR/package/kernel/rtl8189es/patches/014-rtl8189es-runtime-trace.patch"
 echo "STAGED 014-rtl8189es-runtime-trace.patch as rtl8189es package patch"
 
+install -D -m 0644 \
+	"$PATCH_DIR/015-rtl8189es-unregister-wdev-under-wiphy-lock.patch" \
+	"$SOURCE_DIR/package/kernel/rtl8189es/patches/015-rtl8189es-unregister-wdev-under-wiphy-lock.patch"
+echo "STAGED 015-rtl8189es-unregister-wdev-under-wiphy-lock.patch as rtl8189es package patch"
+
 if [ "$PATCH_MODE" = "rtl8189es_inert" ] || [ "$PATCH_MODE" = "rtl8189es_inert_v3" ]; then
 	install -D -m 0755 \
 		"$ROOT_DIR/diagnostics/collect-task-census.sh" \
@@ -75,6 +80,21 @@ if [ "$PATCH_MODE" = "wifi_compat" ] || [ "$PATCH_MODE" = "wifi_compat_v2" ]; th
 		"$PATCH_DIR/009-add-k1-plus-wifi-compat-policy.patch" \
 		"$PATCH_DIR/010-fix-k1-plus-single-phy-fallback.patch" \
 		"$PATCH_DIR/012-reuse-k1-plus-existing-wlan0.patch"; do
+		[ -f "$patch" ] || { echo "missing patch: $patch" >&2; exit 1; }
+		git -C "$SOURCE_DIR" apply --check "$patch"
+		git -C "$SOURCE_DIR" apply "$patch"
+		echo "APPLIED $(basename "$patch")"
+	done
+fi
+
+# wifi_compat_v3: same as v2 but WITHOUT the 012-reuse workaround, so the
+# del_virtual_intf fix (015) is actually exercised by hostap wdev_remove.
+if [ "$PATCH_MODE" = "wifi_compat_v3" ]; then
+	for patch in \
+		"$PATCH_DIR/007-stabilize-k1-plus-rtl8189es-radio.patch" \
+		"$PATCH_DIR/008-fix-k1-plus-runtime-radio-generation.patch" \
+		"$PATCH_DIR/009-add-k1-plus-wifi-compat-policy.patch" \
+		"$PATCH_DIR/010-fix-k1-plus-single-phy-fallback.patch"; do
 		[ -f "$patch" ] || { echo "missing patch: $patch" >&2; exit 1; }
 		git -C "$SOURCE_DIR" apply --check "$patch"
 		git -C "$SOURCE_DIR" apply "$patch"

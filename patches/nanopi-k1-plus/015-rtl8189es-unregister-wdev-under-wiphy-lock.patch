@@ -1,0 +1,75 @@
+diff --git a/include/osdep_intf.h b/include/osdep_intf.h
+index ed0ebd4..f6502c4 100644
+--- a/include/osdep_intf.h
++++ b/include/osdep_intf.h
+@@ -86,6 +86,7 @@ void rtw_os_ndev_free(_adapter *adapter);
+ int rtw_os_ndev_init(_adapter *adapter, const char *name);
+ void rtw_os_ndev_deinit(_adapter *adapter);
+ void rtw_os_ndev_unregister(_adapter *adapter);
++void rtw_os_ndev_unregister_ex(_adapter *adapter, bool wiphy_locked);
+ void rtw_os_ndevs_unregister(struct dvobj_priv *dvobj);
+ int rtw_os_ndevs_init(struct dvobj_priv *dvobj);
+ void rtw_os_ndevs_deinit(struct dvobj_priv *dvobj);
+diff --git a/os_dep/linux/ioctl_cfg80211.c b/os_dep/linux/ioctl_cfg80211.c
+index 22bf855..b6e4c65 100644
+--- a/os_dep/linux/ioctl_cfg80211.c
++++ b/os_dep/linux/ioctl_cfg80211.c
+@@ -4931,13 +4931,18 @@ static int cfg80211_rtw_del_virtual_intf(struct wiphy *wiphy,
+ 		pwdev_priv = adapter_wdev_data(adapter);
+ 
+ 		if (ndev == pwdev_priv->pmon_ndev) {
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 18, 0))
++			if (ndev->ieee80211_ptr)
++				cfg80211_unregister_wdev(ndev->ieee80211_ptr);
++			else
++#endif
+ 			unregister_netdevice(ndev);
+ 			pwdev_priv->pmon_ndev = NULL;
+ 			pwdev_priv->ifname_mon[0] = '\0';
+ 			RTW_INFO(FUNC_NDEV_FMT" remove monitor ndev\n", FUNC_NDEV_ARG(ndev));
+ 		} else {
+ 			RTW_INFO(FUNC_NDEV_FMT" unregister ndev\n", FUNC_NDEV_ARG(ndev));
+-			rtw_os_ndev_unregister(adapter);
++			rtw_os_ndev_unregister_ex(adapter, true);
+ 		}
+ 	} else
+ #if defined(CONFIG_P2P) && defined(RTW_DEDICATED_P2P_DEVICE)
+diff --git a/os_dep/linux/os_intfs.c b/os_dep/linux/os_intfs.c
+index a5b1d77..41b2be9 100644
+--- a/os_dep/linux/os_intfs.c
++++ b/os_dep/linux/os_intfs.c
+@@ -1945,7 +1945,7 @@ exit:
+ 	return ret;
+ }
+ 
+-void rtw_os_ndev_unregister(_adapter *adapter)
++void rtw_os_ndev_unregister_ex(_adapter *adapter, bool wiphy_locked)
+ {
+ 	struct net_device *netdev = NULL;
+ 
+@@ -1964,6 +1964,13 @@ void rtw_os_ndev_unregister(_adapter *adapter)
+ 		struct dvobj_priv *dvobj = adapter_to_dvobj(adapter);
+ 		u8 rtnl_lock_needed = rtw_rtnl_lock_needed(dvobj);
+ 
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 18, 0))
++		if (wiphy_locked && netdev->ieee80211_ptr) {
++			/* caller holds RTNL + wiphy.mtx (cfg80211 del_interface):
++			 * must not let the NETDEV_UNREGISTER notifier retake wiphy.mtx */
++			cfg80211_unregister_wdev(netdev->ieee80211_ptr);
++		} else
++#endif
+ 		if (rtnl_lock_needed)
+ 			unregister_netdev(netdev);
+ 		else
+@@ -1989,6 +1996,11 @@ void rtw_os_ndev_unregister(_adapter *adapter)
+ 	adapter->ndev_unregistering = 0;
+ }
+ 
++void rtw_os_ndev_unregister(_adapter *adapter)
++{
++	rtw_os_ndev_unregister_ex(adapter, false);
++}
++
+ /**
+  * rtw_os_ndev_init - Allocate and register OS layer net device and relating structures for @adapter
+  * @adapter: the adapter on which this function applies
