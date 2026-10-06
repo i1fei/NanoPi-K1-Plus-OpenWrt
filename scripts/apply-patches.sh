@@ -59,6 +59,11 @@ install -D -m 0644 \
 	"$SOURCE_DIR/package/kernel/rtl8189es/patches/015-rtl8189es-unregister-wdev-under-wiphy-lock.patch"
 echo "STAGED 015-rtl8189es-unregister-wdev-under-wiphy-lock.patch as rtl8189es package patch"
 
+install -D -m 0644 \
+	"$PATCH_DIR/016-rtl8189es-register-netdev-under-wiphy-lock.patch" \
+	"$SOURCE_DIR/package/kernel/rtl8189es/patches/016-rtl8189es-register-netdev-under-wiphy-lock.patch"
+echo "STAGED 016-rtl8189es-register-netdev-under-wiphy-lock.patch as rtl8189es package patch"
+
 if [ "$PATCH_MODE" = "rtl8189es_inert" ] || [ "$PATCH_MODE" = "rtl8189es_inert_v3" ]; then
 	install -D -m 0755 \
 		"$ROOT_DIR/diagnostics/collect-task-census.sh" \
