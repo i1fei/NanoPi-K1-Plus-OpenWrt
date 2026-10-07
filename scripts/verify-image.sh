@@ -5,6 +5,8 @@ ARTIFACT_DIR=${1:?artifact directory is required}
 PROFILE=${2:-${BUILD_PROFILE:-default}}
 SOURCE_DIR=${3:-.work/openwrt}
 VALIDATION_FILE="$ARTIFACT_DIR/stage-a-display-validation.txt"
+COLLECT_ALL=0
+VALIDATION_FAILURES=0
 
 : > "$VALIDATION_FILE"
 
@@ -63,23 +65,37 @@ record_full() {
 fail() {
 	record "$1=FAIL"
 	echo "$1 missing or invalid" >&2
+	if [ "$COLLECT_ALL" -eq 1 ]; then
+		VALIDATION_FAILURES=$((VALIDATION_FAILURES + 1))
+		return 0
+	fi
 	exit 1
 }
 
 fail_full() {
 	record_full "$1=FAIL"
 	echo "$1 missing or invalid" >&2
+	if [ "$COLLECT_ALL" -eq 1 ]; then
+		VALIDATION_FAILURES=$((VALIDATION_FAILURES + 1))
+		return 0
+	fi
 	exit 1
 }
 
 require_file() {
-	[ -f "$1" ] || fail "$2"
-	record "$2=PASS"
+	if [ -f "$1" ]; then
+		record "$2=PASS"
+	else
+		fail "$2"
+	fi
 }
 
 require_grep() {
-	grep -Eq "$2" "$1" || fail "$3"
-	record "$3=PASS"
+	if grep -Eq "$2" "$1"; then
+		record "$3=PASS"
+	else
+		fail "$3"
+	fi
 }
 
 require_silent_grep() {
@@ -88,8 +104,11 @@ require_silent_grep() {
 
 require_config() {
 	config_line=$(grep -E "^$1=(y|m)$" "$ARTIFACT_DIR/kernel.config" || true)
-	[ -n "$config_line" ] || fail "$1"
-	record "$config_line"
+	if [ -n "$config_line" ]; then
+		record "$config_line"
+	else
+		fail "$1"
+	fi
 }
 
 require_kernel_config_line() {
@@ -111,12 +130,13 @@ require_no_manifest_pkg() {
 }
 
 require_rtl8189es_artifacts() {
+	before=$VALIDATION_FAILURES
 	require_file "$ARTIFACT_DIR/rtl8189es.ko" "RTL8189ES_KO"
 	require_file "$ARTIFACT_DIR/rtl8189es.build-check.txt" "RTL8189ES_BUILD_CHECK"
 	require_grep "$ARTIFACT_DIR/rtl8189es.build-check.txt" 'rtl8189es\.ko=' "RTL8189ES_BUILD_CHECK"
 	require_file "$ARTIFACT_DIR/rtl8189es.modules.d" "RTL8189ES_MODULES_D"
 	require_grep "$ARTIFACT_DIR/rtl8189es.modules.d" '^rtl8189es$' "RTL8189ES_MODULES_D"
-	record_full "RTL8189ES_AUTOLOAD=PASS"
+	[ "$VALIDATION_FAILURES" -ne "$before" ] || record_full "RTL8189ES_AUTOLOAD=PASS"
 }
 
 verify_rtl8189es_image_module() {
@@ -125,47 +145,89 @@ verify_rtl8189es_image_module() {
 	unsquashfs="$SOURCE_DIR/staging_dir/host/bin/unsquashfs4"
 	image_sha=$(sha256sum "$image" | awk '{print $1}')
 	record_full "FINAL_IMAGE_SHA256=$image_sha"
-	image_sha_changed=1
 	if [ "$image_sha" = "$previous_image_sha" ]; then
-		record_full "FINAL_IMAGE_SHA_CHANGED=FAIL"
-		image_sha_changed=0
+		fail_full "FINAL_IMAGE_SHA_CHANGED"
 	else
 		record_full "FINAL_IMAGE_SHA_CHANGED=PASS"
 	fi
 
-	[ -x "$unsquashfs" ] || fail_full "UNSQUASHFS4"
+	if [ ! -x "$unsquashfs" ]; then
+		fail_full "UNSQUASHFS4"
+		return
+	fi
 	image_work=$(mktemp -d)
 	trap 'rm -rf "$image_work"' 0 1 2 15
-	gzip -dc "$image" > "$image_work/sdcard.img"
-	partition=$(
+	if ! gzip -dc "$image" > "$image_work/sdcard.img"; then
+		fail_full "FINAL_IMAGE_DECOMPRESS"
+		rm -rf "$image_work"
+		trap - 0 1 2 15
+		return
+	fi
+	if ! partition=$(
 		sfdisk --json "$image_work/sdcard.img" |
 			python3 -c 'import json, sys; p = json.load(sys.stdin)["partitiontable"]["partitions"]; print(p[1]["start"], p[1]["size"])'
-	)
+	); then
+		fail_full "ROOTFS_PARTITION"
+		rm -rf "$image_work"
+		trap - 0 1 2 15
+		return
+	fi
 	set -- $partition
-	[ "$#" -eq 2 ] || fail_full "ROOTFS_PARTITION"
-	dd if="$image_work/sdcard.img" of="$image_work/rootfs.squashfs" bs=512 skip="$1" count="$2" status=none
-	"$unsquashfs" -d "$image_work/rootfs" "$image_work/rootfs.squashfs" >/dev/null
+	if [ "$#" -ne 2 ]; then
+		fail_full "ROOTFS_PARTITION"
+		rm -rf "$image_work"
+		trap - 0 1 2 15
+		return
+	fi
+	if ! dd if="$image_work/sdcard.img" of="$image_work/rootfs.squashfs" \
+		bs=512 skip="$1" count="$2" conv=sparse status=none; then
+		fail_full "ROOTFS_PARTITION_EXTRACT"
+		rm -rf "$image_work"
+		trap - 0 1 2 15
+		return
+	fi
+	if ! "$unsquashfs" -d "$image_work/rootfs" "$image_work/rootfs.squashfs" >/dev/null; then
+		fail_full "ROOTFS_SQUASHFS_EXTRACT"
+		rm -rf "$image_work"
+		trap - 0 1 2 15
+		return
+	fi
 
 	module_list="$image_work/modules.txt"
 	find "$image_work/rootfs/lib/modules" -type f -name rtl8189es.ko -print | sort > "$module_list"
 	module_count=$(wc -l < "$module_list" | tr -d '[:space:]')
-	[ "$module_count" -eq 1 ] || fail_full "FINAL_IMAGE_RTL8189ES_COUNT"
+	if [ "$module_count" -ne 1 ]; then
+		fail_full "FINAL_IMAGE_RTL8189ES_COUNT"
+		rm -rf "$image_work"
+		trap - 0 1 2 15
+		return
+	fi
 	module=$(sed -n '1p' "$module_list")
 	cp "$module" "$ARTIFACT_DIR/rtl8189es.image.ko"
 	sha256sum "$ARTIFACT_DIR/rtl8189es.image.ko" > "$ARTIFACT_DIR/rtl8189es.image.sha256"
-	readelf -Ws "$ARTIFACT_DIR/rtl8189es.image.ko" > "$ARTIFACT_DIR/rtl8189es.image.symbols.txt"
+	if ! readelf -Ws "$ARTIFACT_DIR/rtl8189es.image.ko" > "$ARTIFACT_DIR/rtl8189es.image.symbols.txt"; then
+		fail_full "FINAL_IMAGE_RTL8189ES_READELF"
+		rm -rf "$image_work"
+		trap - 0 1 2 15
+		return
+	fi
 
-	awk '$8 == "rtw_os_ndev_register_ex" && $7 != "UND" { found = 1 } END { exit !found }' \
-		"$ARTIFACT_DIR/rtl8189es.image.symbols.txt" || fail_full "FINAL_IMAGE_REGISTER_EX"
-	awk '$8 == "rtw_os_ndev_unregister_ex" && $7 != "UND" { found = 1 } END { exit !found }' \
-		"$ARTIFACT_DIR/rtl8189es.image.symbols.txt" || fail_full "FINAL_IMAGE_UNREGISTER_EX"
-	awk '$8 == "cfg80211_register_netdevice" && $7 == "UND" { found = 1 } END { exit !found }' \
-		"$ARTIFACT_DIR/rtl8189es.image.symbols.txt" || fail_full "FINAL_IMAGE_CFG80211_REGISTER_NETDEVICE"
-	record_full "FINAL_IMAGE_RTL8189ES_SYMBOLS=PASS"
-	[ "$image_sha_changed" -eq 1 ] || {
-		echo "FINAL_IMAGE_SHA_CHANGED missing or invalid" >&2
-		exit 1
-	}
+	symbols="$ARTIFACT_DIR/rtl8189es.image.symbols.txt"
+	if awk '$8 == "rtw_os_ndev_register_ex" && $7 != "UND" { found = 1 } END { exit !found }' "$symbols"; then
+		record_full "FINAL_IMAGE_REGISTER_EX=PASS"
+	else
+		fail_full "FINAL_IMAGE_REGISTER_EX"
+	fi
+	if awk '$8 == "rtw_os_ndev_unregister_ex" && $7 != "UND" { found = 1 } END { exit !found }' "$symbols"; then
+		record_full "FINAL_IMAGE_UNREGISTER_EX=PASS"
+	else
+		fail_full "FINAL_IMAGE_UNREGISTER_EX"
+	fi
+	if awk '$8 == "cfg80211_register_netdevice" && $7 == "UND" { found = 1 } END { exit !found }' "$symbols"; then
+		record_full "FINAL_IMAGE_CFG80211_REGISTER_NETDEVICE=PASS"
+	else
+		fail_full "FINAL_IMAGE_CFG80211_REGISTER_NETDEVICE"
+	fi
 
 	rm -rf "$image_work"
 	trap - 0 1 2 15
@@ -422,36 +484,54 @@ verify_wifi_compat_profile() {
 }
 
 verify_wifi_compat_v2_profile() {
+	profile_before=$VALIDATION_FAILURES
 	record_profile_header
+	before=$VALIDATION_FAILURES
 	require_openwrt_config_line 'CONFIG_TARGET_ROOTFS_PARTSIZE=1024' "ROOTFS_PARTSIZE"
-	record "ROOTFS_PARTSIZE=1024"
-	record_full "ROOTFS_PARTSIZE=1024"
+	if [ "$VALIDATION_FAILURES" -eq "$before" ]; then
+		record "ROOTFS_PARTSIZE=1024"
+		record_full "ROOTFS_PARTSIZE=1024"
+	fi
 
+	before=$VALIDATION_FAILURES
 	for pkg in \
 		kmod-rtl8189es \
 		wpad-openssl \
 		wireless-regdb \
-		iwinfo \
-		rpcd-mod-iwinfo; do
-		require_manifest_pkg "$pkg" "WIFI_STACK"
+		iwinfo; do
+		require_manifest_pkg "$pkg" "WIFI_STACK_$pkg"
 	done
-	record_full "WIFI_STACK=PASS"
+	if [ "$PROFILE_KEY" = wifi_compat_v3 ]; then
+		require_no_manifest_pkg rpcd-mod-iwinfo "RPCD_MOD_IWINFO"
+		record_full "RPCD_MOD_IWINFO=INTENTIONALLY_EXCLUDED_NO_LUCI"
+	else
+		require_manifest_pkg rpcd-mod-iwinfo "WIFI_STACK_rpcd-mod-iwinfo"
+	fi
+	[ "$VALIDATION_FAILURES" -ne "$before" ] || record_full "WIFI_STACK=PASS"
 	require_rtl8189es_artifacts
 
+	before=$VALIDATION_FAILURES
 	for pkg in kmod-usb-hid kmod-usb-storage; do
-		require_manifest_pkg "$pkg" "USB_BASE"
+		require_manifest_pkg "$pkg" "USB_BASE_$pkg"
 	done
-	record_full "USB_BASE=PASS"
+	[ "$VALIDATION_FAILURES" -ne "$before" ] || record_full "USB_BASE=PASS"
 
+	before=$VALIDATION_FAILURES
 	for pkg in kmod-fs-ext4 kmod-fs-vfat kmod-fs-exfat kmod-fs-ntfs3; do
-		require_manifest_pkg "$pkg" "FILESYSTEMS"
+		require_manifest_pkg "$pkg" "FILESYSTEMS_$pkg"
 	done
-	record_full "FILESYSTEMS=PASS"
+	[ "$VALIDATION_FAILURES" -ne "$before" ] || record_full "FILESYSTEMS=PASS"
 
-	for pkg in nano curl wget-ssl htop ethtool iperf3 usbutils evtest libdrm-tests; do
-		require_manifest_pkg "$pkg" "HARDWARE_TOOLS"
+	before=$VALIDATION_FAILURES
+	tool_packages='nano curl wget-ssl htop ethtool iperf3 evtest'
+	[ "$PROFILE_KEY" = wifi_compat_v3 ] || tool_packages="$tool_packages usbutils libdrm-tests"
+	for pkg in $tool_packages; do
+		require_manifest_pkg "$pkg" "HARDWARE_TOOLS_$pkg"
 	done
-	record_full "HARDWARE_TOOLS=PASS"
+	if [ "$PROFILE_KEY" = wifi_compat_v3 ]; then
+		record_full "UNAVAILABLE_TOOL_PACKAGES=usbutils,libdrm-tests"
+	fi
+	[ "$VALIDATION_FAILURES" -ne "$before" ] || record_full "HARDWARE_TOOLS=PASS"
 
 	if [ "$PROFILE_KEY" = wifi_compat_v3 ]; then
 		policy_file="$ARTIFACT_DIR/k1-plus-wifi-compat-v3-policy"
@@ -460,11 +540,13 @@ verify_wifi_compat_v2_profile() {
 		policy_file="$ARTIFACT_DIR/k1-plus-wifi-compat-v2-policy"
 		policy_check=WIFI_COMPAT_V2_POLICY
 	fi
+	before=$VALIDATION_FAILURES
 	require_file "$policy_file" "$policy_check"
 	require_grep "$policy_file" "^[[:space:]]*option device 'eth0'$" "$policy_check"
 	require_grep "$policy_file" "^[[:space:]]*option ipaddr '192\\.168\\.1\\.1'$" "$policy_check"
-	record_full "LAN_POLICY=DIRECT_ETH0_STATIC_192.168.1.1"
+	[ "$VALIDATION_FAILURES" -ne "$before" ] || record_full "LAN_POLICY=DIRECT_ETH0_STATIC_192.168.1.1"
 
+	before=$VALIDATION_FAILURES
 	require_file "$ARTIFACT_DIR/k1-plus-wireless-config" "WIRELESS_CONFIG"
 	require_grep "$ARTIFACT_DIR/k1-plus-wireless-config" "^config wifi-device 'radio0'$" "WIRELESS_CONFIG"
 	require_grep "$ARTIFACT_DIR/k1-plus-wireless-config" "^[[:space:]]*option phy 'phy0'$" "WIRELESS_CONFIG"
@@ -476,16 +558,21 @@ verify_wifi_compat_v2_profile() {
 		if grep -Eq "^[[:space:]]*option disabled '0'$" "$ARTIFACT_DIR/k1-plus-wireless-config"; then
 			fail_full "WIRELESS_CONFIG_DISABLED"
 		fi
-		record_full "WIRELESS_CONFIG=PHY0_SINGLE_RADIO_DISABLED_WPA2_AP"
-		record_full "WIFI_AP_RUNTIME_PATCH=CREATE_AND_DELETE_VIRTUAL_INTERFACE"
+		if [ "$VALIDATION_FAILURES" -eq "$before" ]; then
+			record_full "WIRELESS_CONFIG=PHY0_SINGLE_RADIO_DISABLED_WPA2_AP"
+			record_full "WIFI_AP_RUNTIME_PATCH=CREATE_AND_DELETE_VIRTUAL_INTERFACE"
+		fi
 	else
 		require_grep "$ARTIFACT_DIR/k1-plus-wireless-config" "^[[:space:]]*option disabled '0'$" "WIRELESS_CONFIG_AP_ENABLED"
-		record_full "WIRELESS_CONFIG=PHY0_SINGLE_RADIO_ENABLED_WPA2_AP"
-		record_full "WIFI_AP_RUNTIME_PATCH=REUSE_EXISTING_WLAN0"
+		if [ "$VALIDATION_FAILURES" -eq "$before" ]; then
+			record_full "WIRELESS_CONFIG=PHY0_SINGLE_RADIO_ENABLED_WPA2_AP"
+			record_full "WIFI_AP_RUNTIME_PATCH=REUSE_EXISTING_WLAN0"
+		fi
 	fi
 	if grep -Eq "^[[:space:]]*option path " "$ARTIFACT_DIR/k1-plus-wireless-config"; then
 		fail_full "WIRELESS_CONFIG_PATH"
 	fi
+	before=$VALIDATION_FAILURES
 	for pkg in \
 		luci-app-watchcat \
 		watchcat \
@@ -494,12 +581,16 @@ verify_wifi_compat_v2_profile() {
 		bluez-daemon \
 		openssh-server \
 		samba4-server; do
-		require_no_manifest_pkg "$pkg" "EXCLUDED_COMPONENTS"
+		require_no_manifest_pkg "$pkg" "EXCLUDED_COMPONENTS_$pkg"
 	done
-	record_full "EXCLUDED_COMPONENTS=PASS"
+	[ "$VALIDATION_FAILURES" -ne "$before" ] || record_full "EXCLUDED_COMPONENTS=PASS"
 	if [ "$PROFILE_KEY" = wifi_compat_v3 ]; then
 		verify_rtl8189es_image_module
-		record_full "WIFI_COMPAT_V3_PROFILE_VERIFY=PASS"
+		if [ "$VALIDATION_FAILURES" -eq "$profile_before" ]; then
+			record_full "WIFI_COMPAT_V3_PROFILE_VERIFY=PASS"
+		else
+			record_full "WIFI_COMPAT_V3_PROFILE_VERIFY=FAIL"
+		fi
 	else
 		record_full "WIFI_COMPAT_V2_PROFILE_VERIFY=PASS"
 	fi
@@ -723,6 +814,9 @@ if [ -n "$manifest" ]; then
 	require_grep "$manifest" '^kmod-usb-hid([[:space:]]|$)' "MANIFEST_KMOD_USB_HID"
 fi
 
+if [ "$PROFILE_KEY" = wifi_compat_v3 ]; then
+	COLLECT_ALL=1
+fi
 case "$PROFILE_KEY" in
 	base) verify_base_profile ;;
 	full) verify_full_profile ;;
@@ -737,5 +831,10 @@ printf '%s\n' "$IMAGE_FILES" | while IFS= read -r image_file; do
 	gzip -t "$image_file"
 done
 (cd "$ARTIFACT_DIR" && sha256sum -c sha256sums)
+if [ "$VALIDATION_FAILURES" -ne 0 ]; then
+	record "STAGE_A_DISPLAY_VERIFY=FAIL"
+	echo "IMAGE_VERIFY=FAIL ($VALIDATION_FAILURES checks failed)" >&2
+	exit 1
+fi
 record "STAGE_A_DISPLAY_VERIFY=PASS"
 echo 'IMAGE_VERIFY=PASS'
