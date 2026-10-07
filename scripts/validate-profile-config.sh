@@ -320,7 +320,7 @@ check_common
 case "$profile" in
 	base) check_base ;;
 	full) check_full ;;
-	wifi_compat|wifi_compat_v2) check_wifi_compat ;;
+	wifi_compat|wifi_compat_v2|wifi_compat_v3) check_wifi_compat ;;
 	rtl8189es_inert) check_rtl8189es_inert ;;
 	buddha) check_buddha ;;
 	*) note_fail "unknown profile: $profile" ;;

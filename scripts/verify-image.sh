@@ -3,6 +3,7 @@ set -eu
 
 ARTIFACT_DIR=${1:?artifact directory is required}
 PROFILE=${2:-${BUILD_PROFILE:-default}}
+SOURCE_DIR=${3:-.work/openwrt}
 VALIDATION_FILE="$ARTIFACT_DIR/stage-a-display-validation.txt"
 
 : > "$VALIDATION_FILE"
@@ -27,6 +28,11 @@ case "$PROFILE" in
 		PROFILE_KEY=wifi_compat_v2
 		PROFILE_LABEL=WIFI_COMPAT_V2
 		PROFILE_VALIDATION_FILE="$ARTIFACT_DIR/wifi-compat-v2-profile-manifest-validation.txt"
+		;;
+	wifi_compat_v3)
+		PROFILE_KEY=wifi_compat_v3
+		PROFILE_LABEL=WIFI_COMPAT_V3
+		PROFILE_VALIDATION_FILE="$ARTIFACT_DIR/wifi-compat-v3-profile-manifest-validation.txt"
 		;;
 	rtl8189es_inert)
 		PROFILE_KEY=rtl8189es_inert
@@ -111,6 +117,58 @@ require_rtl8189es_artifacts() {
 	require_file "$ARTIFACT_DIR/rtl8189es.modules.d" "RTL8189ES_MODULES_D"
 	require_grep "$ARTIFACT_DIR/rtl8189es.modules.d" '^rtl8189es$' "RTL8189ES_MODULES_D"
 	record_full "RTL8189ES_AUTOLOAD=PASS"
+}
+
+verify_rtl8189es_image_module() {
+	image="$ARTIFACT_DIR/NanoPi-K1-Plus-sunxi-cortexa53.img.gz"
+	previous_image_sha=4ab509b0a6106abc17404bc00079c6e50d22ce47feb14900db7c9df1ef620f10
+	unsquashfs="$SOURCE_DIR/staging_dir/host/bin/unsquashfs4"
+	image_sha=$(sha256sum "$image" | awk '{print $1}')
+	record_full "FINAL_IMAGE_SHA256=$image_sha"
+	image_sha_changed=1
+	if [ "$image_sha" = "$previous_image_sha" ]; then
+		record_full "FINAL_IMAGE_SHA_CHANGED=FAIL"
+		image_sha_changed=0
+	else
+		record_full "FINAL_IMAGE_SHA_CHANGED=PASS"
+	fi
+
+	[ -x "$unsquashfs" ] || fail_full "UNSQUASHFS4"
+	image_work=$(mktemp -d)
+	trap 'rm -rf "$image_work"' 0 1 2 15
+	gzip -dc "$image" > "$image_work/sdcard.img"
+	partition=$(
+		sfdisk --json "$image_work/sdcard.img" |
+			python3 -c 'import json, sys; p = json.load(sys.stdin)["partitiontable"]["partitions"]; print(p[1]["start"], p[1]["size"])'
+	)
+	set -- $partition
+	[ "$#" -eq 2 ] || fail_full "ROOTFS_PARTITION"
+	dd if="$image_work/sdcard.img" of="$image_work/rootfs.squashfs" bs=512 skip="$1" count="$2" status=none
+	"$unsquashfs" -d "$image_work/rootfs" "$image_work/rootfs.squashfs" >/dev/null
+
+	module_list="$image_work/modules.txt"
+	find "$image_work/rootfs/lib/modules" -type f -name rtl8189es.ko -print | sort > "$module_list"
+	module_count=$(wc -l < "$module_list" | tr -d '[:space:]')
+	[ "$module_count" -eq 1 ] || fail_full "FINAL_IMAGE_RTL8189ES_COUNT"
+	module=$(sed -n '1p' "$module_list")
+	cp "$module" "$ARTIFACT_DIR/rtl8189es.image.ko"
+	sha256sum "$ARTIFACT_DIR/rtl8189es.image.ko" > "$ARTIFACT_DIR/rtl8189es.image.sha256"
+	readelf -Ws "$ARTIFACT_DIR/rtl8189es.image.ko" > "$ARTIFACT_DIR/rtl8189es.image.symbols.txt"
+
+	awk '$8 == "rtw_os_ndev_register_ex" && $7 != "UND" { found = 1 } END { exit !found }' \
+		"$ARTIFACT_DIR/rtl8189es.image.symbols.txt" || fail_full "FINAL_IMAGE_REGISTER_EX"
+	awk '$8 == "rtw_os_ndev_unregister_ex" && $7 != "UND" { found = 1 } END { exit !found }' \
+		"$ARTIFACT_DIR/rtl8189es.image.symbols.txt" || fail_full "FINAL_IMAGE_UNREGISTER_EX"
+	awk '$8 == "cfg80211_register_netdevice" && $7 == "UND" { found = 1 } END { exit !found }' \
+		"$ARTIFACT_DIR/rtl8189es.image.symbols.txt" || fail_full "FINAL_IMAGE_CFG80211_REGISTER_NETDEVICE"
+	record_full "FINAL_IMAGE_RTL8189ES_SYMBOLS=PASS"
+	[ "$image_sha_changed" -eq 1 ] || {
+		echo "FINAL_IMAGE_SHA_CHANGED missing or invalid" >&2
+		exit 1
+	}
+
+	rm -rf "$image_work"
+	trap - 0 1 2 15
 }
 
 resolve_image_files() {
@@ -395,9 +453,16 @@ verify_wifi_compat_v2_profile() {
 	done
 	record_full "HARDWARE_TOOLS=PASS"
 
-	require_file "$ARTIFACT_DIR/k1-plus-wifi-compat-v2-policy" "WIFI_COMPAT_V2_POLICY"
-	require_grep "$ARTIFACT_DIR/k1-plus-wifi-compat-v2-policy" "^[[:space:]]*option device 'eth0'$" "WIFI_COMPAT_V2_POLICY"
-	require_grep "$ARTIFACT_DIR/k1-plus-wifi-compat-v2-policy" "^[[:space:]]*option ipaddr '192\\.168\\.1\\.1'$" "WIFI_COMPAT_V2_POLICY"
+	if [ "$PROFILE_KEY" = wifi_compat_v3 ]; then
+		policy_file="$ARTIFACT_DIR/k1-plus-wifi-compat-v3-policy"
+		policy_check=WIFI_COMPAT_V3_POLICY
+	else
+		policy_file="$ARTIFACT_DIR/k1-plus-wifi-compat-v2-policy"
+		policy_check=WIFI_COMPAT_V2_POLICY
+	fi
+	require_file "$policy_file" "$policy_check"
+	require_grep "$policy_file" "^[[:space:]]*option device 'eth0'$" "$policy_check"
+	require_grep "$policy_file" "^[[:space:]]*option ipaddr '192\\.168\\.1\\.1'$" "$policy_check"
 	record_full "LAN_POLICY=DIRECT_ETH0_STATIC_192.168.1.1"
 
 	require_file "$ARTIFACT_DIR/k1-plus-wireless-config" "WIRELESS_CONFIG"
@@ -405,13 +470,22 @@ verify_wifi_compat_v2_profile() {
 	require_grep "$ARTIFACT_DIR/k1-plus-wireless-config" "^[[:space:]]*option phy 'phy0'$" "WIRELESS_CONFIG"
 	require_grep "$ARTIFACT_DIR/k1-plus-wireless-config" "^[[:space:]]*option ssid 'NanoPi-K1-Plus'$" "WIRELESS_CONFIG"
 	require_grep "$ARTIFACT_DIR/k1-plus-wireless-config" "^[[:space:]]*option encryption 'psk2'$" "WIRELESS_CONFIG"
-	require_grep "$ARTIFACT_DIR/k1-plus-wireless-config" "^[[:space:]]*option disabled '0'$" "WIRELESS_CONFIG_AP_ENABLED"
+	if [ "$PROFILE_KEY" = wifi_compat_v3 ]; then
+		disabled_count=$(grep -Ec "^[[:space:]]*option disabled '1'$" "$ARTIFACT_DIR/k1-plus-wireless-config" || true)
+		[ "$disabled_count" -eq 2 ] || fail_full "WIRELESS_CONFIG_DISABLED"
+		if grep -Eq "^[[:space:]]*option disabled '0'$" "$ARTIFACT_DIR/k1-plus-wireless-config"; then
+			fail_full "WIRELESS_CONFIG_DISABLED"
+		fi
+		record_full "WIRELESS_CONFIG=PHY0_SINGLE_RADIO_DISABLED_WPA2_AP"
+		record_full "WIFI_AP_RUNTIME_PATCH=CREATE_AND_DELETE_VIRTUAL_INTERFACE"
+	else
+		require_grep "$ARTIFACT_DIR/k1-plus-wireless-config" "^[[:space:]]*option disabled '0'$" "WIRELESS_CONFIG_AP_ENABLED"
+		record_full "WIRELESS_CONFIG=PHY0_SINGLE_RADIO_ENABLED_WPA2_AP"
+		record_full "WIFI_AP_RUNTIME_PATCH=REUSE_EXISTING_WLAN0"
+	fi
 	if grep -Eq "^[[:space:]]*option path " "$ARTIFACT_DIR/k1-plus-wireless-config"; then
 		fail_full "WIRELESS_CONFIG_PATH"
 	fi
-	record_full "WIRELESS_CONFIG=PHY0_SINGLE_RADIO_ENABLED_WPA2_AP"
-	record_full "WIFI_AP_RUNTIME_PATCH=REUSE_EXISTING_WLAN0"
-
 	for pkg in \
 		luci-app-watchcat \
 		watchcat \
@@ -423,7 +497,12 @@ verify_wifi_compat_v2_profile() {
 		require_no_manifest_pkg "$pkg" "EXCLUDED_COMPONENTS"
 	done
 	record_full "EXCLUDED_COMPONENTS=PASS"
-	record_full "WIFI_COMPAT_V2_PROFILE_VERIFY=PASS"
+	if [ "$PROFILE_KEY" = wifi_compat_v3 ]; then
+		verify_rtl8189es_image_module
+		record_full "WIFI_COMPAT_V3_PROFILE_VERIFY=PASS"
+	else
+		record_full "WIFI_COMPAT_V2_PROFILE_VERIFY=PASS"
+	fi
 }
 
 verify_rtl8189es_inert_profile() {
@@ -648,7 +727,7 @@ case "$PROFILE_KEY" in
 	base) verify_base_profile ;;
 	full) verify_full_profile ;;
 	wifi_compat) verify_wifi_compat_profile ;;
-	wifi_compat_v2) verify_wifi_compat_v2_profile ;;
+	wifi_compat_v2|wifi_compat_v3) verify_wifi_compat_v2_profile ;;
 	rtl8189es_inert) verify_rtl8189es_inert_profile ;;
 	buddha) verify_buddha_profile ;;
 esac

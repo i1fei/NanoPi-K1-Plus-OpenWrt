@@ -146,7 +146,7 @@ jobs:
           exit "$result"
 
       - name: Capture RTL8189ES compile evidence
-        if: always()
+        if: success()
         run: |
           set -eu
           evidence="$GITHUB_WORKSPACE/.work/rtl8189es-diag-evidence"
@@ -194,15 +194,6 @@ jobs:
             sha256sum "$evidence"/* > "$evidence/sha256sums" 2>/dev/null || true
           fi
 
-      - name: Upload RTL8189ES compile evidence
-        if: always()
-        uses: actions/upload-artifact@v7.0.1
-        with:
-          name: rtl8189es-diag-evidence
-          path: .work/rtl8189es-diag-evidence
-          if-no-files-found: warn
-          include-hidden-files: true
-
       - name: List target output files
         if: always()
         run: |
@@ -234,7 +225,7 @@ jobs:
             .work/openwrt/bin/targets/sunxi/cortexa53 \
             .work/artifact \
             .work/openwrt
-          ./scripts/verify-image.sh .work/artifact "$BUILD_PROFILE"
+          ./scripts/verify-image.sh .work/artifact "$BUILD_PROFILE" .work/openwrt
           if [ -f .work/build-single.log ]; then
             cat .work/build-parallel.log .work/build-single.log > .work/artifact/build.log
           else
@@ -268,9 +259,13 @@ jobs:
             k1-plus-mmc-cross-mount-policy \
             k1-plus-wifi-compat-lan-policy \
             k1-plus-wifi-compat-v2-policy \
+            k1-plus-wifi-compat-v3-policy \
             k1-plus-wireless-config \
             rtl8189es.ko \
             rtl8189es.build-check.txt \
+            rtl8189es.image.ko \
+            rtl8189es.image.sha256 \
+            rtl8189es.image.symbols.txt \
             rtl8189es.modules.d \
             rtl8189es-uci-defaults-50_rtl-wifi \
             stage-a-display-validation.txt \
@@ -278,12 +273,11 @@ jobs:
             full-profile-manifest-validation.txt \
             wifi-compat-profile-manifest-validation.txt \
             wifi-compat-v2-profile-manifest-validation.txt \
+            wifi-compat-v3-profile-manifest-validation.txt \
             rtl8189es-inert-profile-manifest-validation.txt \
             buddha-profile-manifest-validation.txt; do
             [ -f ".work/artifact/$file" ] && cp ".work/artifact/$file" ".work/failure/$file"
           done
-          find .work/artifact -maxdepth 1 -type f \( -name '*.img' -o -name '*.img.gz' -o -name '*.manifest' \) \
-            -exec cp {} .work/failure/ \;
           df -h > .work/failure/disk-space.txt
 
       - name: Upload successful firmware
@@ -292,6 +286,15 @@ jobs:
         with:
           name: NanoPi-K1-Plus-OpenWrt
           path: .work/artifact
+          if-no-files-found: error
+          include-hidden-files: true
+
+      - name: Upload RTL8189ES compile evidence
+        if: success()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: rtl8189es-diag-evidence
+          path: .work/rtl8189es-diag-evidence
           if-no-files-found: error
           include-hidden-files: true
 
