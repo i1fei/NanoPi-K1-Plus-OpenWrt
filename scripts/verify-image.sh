@@ -186,7 +186,8 @@ verify_rtl8189es_image_module() {
 		trap - 0 1 2 15
 		return
 	fi
-	if ! "$unsquashfs" -d "$image_work/rootfs" "$image_work/rootfs.squashfs" >/dev/null; then
+	if ! "$unsquashfs" -no-progress -d "$image_work/rootfs" \
+		"$image_work/rootfs.squashfs" 'lib/modules/*/rtl8189es.ko' >/dev/null; then
 		fail_full "ROOTFS_SQUASHFS_EXTRACT"
 		rm -rf "$image_work"
 		trap - 0 1 2 15
