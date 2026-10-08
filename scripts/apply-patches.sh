@@ -74,6 +74,11 @@ install -D -m 0644 \
 	"$SOURCE_DIR/package/kernel/rtl8189es/patches/018-rtl8189es-distinct-lockdep-classes.patch"
 echo "STAGED 018-rtl8189es-distinct-lockdep-classes.patch as rtl8189es package patch"
 
+install -D -m 0644 \
+	"$PATCH_DIR/019-rtl8189es-cancel-reorder-timers-outside-sta-lock.patch" \
+	"$SOURCE_DIR/package/kernel/rtl8189es/patches/019-rtl8189es-cancel-reorder-timers-outside-sta-lock.patch"
+echo "STAGED 019-rtl8189es-cancel-reorder-timers-outside-sta-lock.patch as rtl8189es package patch"
+
 if [ "$PATCH_MODE" = "rtl8189es_inert" ] || [ "$PATCH_MODE" = "rtl8189es_inert_v3" ]; then
 	install -D -m 0755 \
 		"$ROOT_DIR/diagnostics/collect-task-census.sh" \

@@ -1,0 +1,46 @@
+diff --git a/core/rtw_sta_mgt.c b/core/rtw_sta_mgt.c
+index ce7c195..383a7ea 100644
+--- a/core/rtw_sta_mgt.c
++++ b/core/rtw_sta_mgt.c
+@@ -439,8 +439,10 @@ u32	_rtw_free_sta_priv(struct	sta_priv *pstapriv)
+ 	_irqL	irqL;
+ 	_list	*phead, *plist;
+ 	struct sta_info *psta = NULL;
++	struct sta_info *sta_to_cancel[NUM_STA];
+ 	struct recv_reorder_ctrl *preorder_ctrl;
+ 	int	index;
++	int sta_count = 0;
+ 
+ 	if (pstapriv) {
+ 
+@@ -451,17 +453,24 @@ u32	_rtw_free_sta_priv(struct	sta_priv *pstapriv)
+ 			plist = get_next(phead);
+ 
+ 			while ((rtw_end_of_queue_search(phead, plist)) == _FALSE) {
+-				int i;
+ 				psta = LIST_CONTAINOR(plist, struct sta_info , hash_list);
+ 				plist = get_next(plist);
+-
+-				for (i = 0; i < 16 ; i++) {
+-					preorder_ctrl = &psta->recvreorder_ctrl[i];
+-					_cancel_timer_ex(&preorder_ctrl->reordering_ctrl_timer);
+-				}
++				sta_to_cancel[sta_count++] = psta;
+ 			}
+ 		}
+ 		_exit_critical_bh(&pstapriv->sta_hash_lock, &irqL);
++
++		/* A reorder timer callback may reach rtw_get_stainfo() through the
++		 * receive path. Never wait for it while holding sta_hash_lock. */
++		for (index = 0; index < sta_count; index++) {
++			int i;
++
++			psta = sta_to_cancel[index];
++			for (i = 0; i < 16; i++) {
++				preorder_ctrl = &psta->recvreorder_ctrl[i];
++				_cancel_timer_ex(&preorder_ctrl->reordering_ctrl_timer);
++			}
++		}
+ 		/*===============================*/
+ 
+ 		rtw_mfree_sta_priv_lock(pstapriv);
