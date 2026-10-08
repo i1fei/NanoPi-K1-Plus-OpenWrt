@@ -248,6 +248,25 @@ verify_rtl8189es_image_module() {
 	else
 		fail_full "FINAL_IMAGE_MUTEX_INIT_CALL_SITES"
 	fi
+	if awk '$8 == "_rtw_spinlock_init" || $8 == "_rtw_init_queue" || $8 == "rtw_init_timer" || $8 == "_rtw_init_sema" || $8 == "odm_initialize_timer" { found = 1 } END { exit !found }' "$symbols"; then
+		fail_full "FINAL_IMAGE_RTW_LOCK_INIT_WRAPPERS_ABSENT"
+	else
+		record_full "FINAL_IMAGE_RTW_LOCK_INIT_WRAPPERS_ABSENT=PASS"
+	fi
+	spin_init_relocations=$(awk '$0 ~ /[[:space:]]__raw_spin_lock_init([[:space:]]|$)/ { count++ } END { print count + 0 }' "$relocations")
+	record_full "FINAL_IMAGE_SPIN_INIT_RELOCATIONS=$spin_init_relocations"
+	if [ "$spin_init_relocations" -gt 1 ]; then
+		record_full "FINAL_IMAGE_SPIN_INIT_CALL_SITES=PASS"
+	else
+		fail_full "FINAL_IMAGE_SPIN_INIT_CALL_SITES"
+	fi
+	timer_init_relocations=$(awk '$0 ~ /[[:space:]]timer_init_key([[:space:]]|$)/ { count++ } END { print count + 0 }' "$relocations")
+	record_full "FINAL_IMAGE_TIMER_INIT_RELOCATIONS=$timer_init_relocations"
+	if [ "$timer_init_relocations" -gt 2 ]; then
+		record_full "FINAL_IMAGE_TIMER_INIT_CALL_SITES=PASS"
+	else
+		fail_full "FINAL_IMAGE_TIMER_INIT_CALL_SITES"
+	fi
 
 	rm -rf "$image_work"
 	trap - 0 1 2 15

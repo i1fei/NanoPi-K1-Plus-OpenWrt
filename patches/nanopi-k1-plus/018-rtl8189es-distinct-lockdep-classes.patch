@@ -1,0 +1,285 @@
+diff --git a/hal/phydm/phydm_interface.c b/hal/phydm/phydm_interface.c
+index ed832c4..7191e0f 100644
+--- a/hal/phydm/phydm_interface.c
++++ b/hal/phydm/phydm_interface.c
+@@ -697,6 +697,8 @@ void odm_set_timer(struct dm_struct *dm, struct phydm_timer_list *timer,
+ #endif
+ }
+ 
++#if (DM_ODM_SUPPORT_TYPE != ODM_CE) || defined(DM_ODM_CE_MAC80211) || \
++	defined(DM_ODM_CE_MAC80211_V2)
+ void odm_initialize_timer(struct dm_struct *dm, struct phydm_timer_list *timer,
+ 			  void *call_back_func, void *context,
+ 			  const char *sz_id)
+@@ -724,6 +726,7 @@ void odm_initialize_timer(struct dm_struct *dm, struct phydm_timer_list *timer,
+ 	rtw_init_timer(timer, adapter->pnetdev, (TIMER_FUN)call_back_func, dm, NULL);
+ #endif
+ }
++#endif
+ 
+ void odm_cancel_timer(struct dm_struct *dm, struct phydm_timer_list *timer)
+ {
+diff --git a/hal/phydm/phydm_interface.h b/hal/phydm/phydm_interface.h
+index 37a518a..69a72fb 100644
+--- a/hal/phydm/phydm_interface.h
++++ b/hal/phydm/phydm_interface.h
+@@ -257,9 +257,19 @@ void ODM_sleep_us(u32 us);
+ void odm_set_timer(struct dm_struct *dm, struct phydm_timer_list *timer,
+ 		   u32 ms_delay);
+ 
++#if (DM_ODM_SUPPORT_TYPE == ODM_CE) && \
++	!defined(DM_ODM_CE_MAC80211) && !defined(DM_ODM_CE_MAC80211_V2)
++#define odm_initialize_timer(dm, timer, call_back_func, context, sz_id) \
++	do { \
++		(void)(context); \
++		(void)(sz_id); \
++		_init_timer((timer), NULL, (call_back_func), (dm)); \
++	} while (0)
++#else
+ void odm_initialize_timer(struct dm_struct *dm, struct phydm_timer_list *timer,
+ 			  void *call_back_func, void *context,
+ 			  const char *sz_id);
++#endif
+ 
+ void odm_cancel_timer(struct dm_struct *dm, struct phydm_timer_list *timer);
+ 
+diff --git a/include/osdep_service.h b/include/osdep_service.h
+index 94fcbf3..6e6a241 100644
+--- a/include/osdep_service.h
++++ b/include/osdep_service.h
+@@ -327,13 +327,23 @@ void rtw_hlist_del(rtw_hlist_node *n);
+ void rtw_hlist_add_head_rcu(rtw_hlist_node *n, rtw_hlist_head *h);
+ void rtw_hlist_del_rcu(rtw_hlist_node *n);
+ 
++#ifdef PLATFORM_LINUX
++/* Keep lock initialization at each logical RTW caller so unrelated objects
++ * stay distinct. sema_init() is inline, so override its shared internal key. */
++#define _rtw_init_sema(sema, init_val) \
++	do { \
++		static struct lock_class_key __rtw_sema_key; \
++		_sema *__rtw_sema = (sema); \
++		sema_init(__rtw_sema, (init_val)); \
++		lockdep_set_class(&__rtw_sema->lock, &__rtw_sema_key); \
++	} while (0)
++#else
+ extern void	_rtw_init_sema(_sema *sema, int init_val);
++#endif
+ extern void	_rtw_free_sema(_sema	*sema);
+ extern void	_rtw_up_sema(_sema	*sema);
+ extern u32	_rtw_down_sema(_sema *sema);
+ #ifdef PLATFORM_LINUX
+-/* mutex_init() defines a static lock_class_key at its expansion site.
+- * Keep it at each caller so unrelated RTW mutexes use distinct classes. */
+ #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 37))
+ #define _rtw_mutex_init(pmutex) mutex_init(pmutex)
+ #else
+@@ -343,16 +353,29 @@ extern u32	_rtw_down_sema(_sema *sema);
+ extern void	_rtw_mutex_init(_mutex *pmutex);
+ #endif
+ extern void	_rtw_mutex_free(_mutex *pmutex);
++#ifdef PLATFORM_LINUX
++#define _rtw_spinlock_init(plock) spin_lock_init(plock)
++#else
+ #ifndef PLATFORM_FREEBSD
+ extern void	_rtw_spinlock_init(_lock *plock);
+ #endif /* PLATFORM_FREEBSD */
++#endif
+ extern void	_rtw_spinlock_free(_lock *plock);
+ extern void	_rtw_spinlock(_lock	*plock);
+ extern void	_rtw_spinunlock(_lock	*plock);
+ extern void	_rtw_spinlock_ex(_lock	*plock);
+ extern void	_rtw_spinunlock_ex(_lock	*plock);
+ 
++#ifdef PLATFORM_LINUX
++#define _rtw_init_queue(pqueue) \
++	do { \
++		_queue *__rtw_queue = (pqueue); \
++		_rtw_init_listhead(&__rtw_queue->queue); \
++		_rtw_spinlock_init(&__rtw_queue->lock); \
++	} while (0)
++#else
+ extern void	_rtw_init_queue(_queue *pqueue);
++#endif
+ extern void _rtw_deinit_queue(_queue *pqueue);
+ extern u32	_rtw_queue_empty(_queue	*pqueue);
+ extern u32	rtw_end_of_queue_search(_list *queue, _list *pelement);
+@@ -408,7 +431,15 @@ extern void	rtw_udelay_os(int us);
+ extern void rtw_yield_os(void);
+ 
+ 
++#ifdef PLATFORM_LINUX
++#define rtw_init_timer(ptimer, padapter, pfunc, ctx) \
++	do { \
++		(void)(padapter); \
++		_init_timer((ptimer), NULL, (pfunc), (ctx)); \
++	} while (0)
++#else
+ extern void rtw_init_timer(_timer *ptimer, void *padapter, void *pfunc, void *ctx);
++#endif
+ 
+ 
+ __inline static unsigned char _cancel_timer_ex(_timer *ptimer)
+diff --git a/include/osdep_service_linux.h b/include/osdep_service_linux.h
+index e5f7b17..25eaae5 100644
+--- a/include/osdep_service_linux.h
++++ b/include/osdep_service_linux.h
+@@ -381,20 +381,27 @@ static inline void timer_hdl(unsigned long cntx)
+ 	ptimer->function(ptimer->arg);
+ }
+ 
+-__inline static void _init_timer(_timer *ptimer, _nic_hdl nic_hdl, void *pfunc, void *cntx)
+-{
+-	ptimer->function = pfunc;
+-	ptimer->arg = cntx;
+-
+ #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 0))
+-	timer_setup(&ptimer->timer, timer_hdl, 0);
++#define _init_timer(ptimer, nic_hdl, pfunc, cntx) \
++	do { \
++		_timer *__rtw_timer = (ptimer); \
++		(void)(nic_hdl); \
++		__rtw_timer->function = (pfunc); \
++		__rtw_timer->arg = (cntx); \
++		timer_setup(&__rtw_timer->timer, timer_hdl, 0); \
++	} while (0)
+ #else
+-	/* setup_timer(ptimer, pfunc,(u32)cntx);	 */
+-	ptimer->timer.function = timer_hdl;
+-	ptimer->timer.data = (unsigned long)ptimer;
+-	init_timer(&ptimer->timer);
++#define _init_timer(ptimer, nic_hdl, pfunc, cntx) \
++	do { \
++		_timer *__rtw_timer = (ptimer); \
++		(void)(nic_hdl); \
++		__rtw_timer->function = (pfunc); \
++		__rtw_timer->arg = (cntx); \
++		__rtw_timer->timer.function = timer_hdl; \
++		__rtw_timer->timer.data = (unsigned long)__rtw_timer; \
++		init_timer(&__rtw_timer->timer); \
++	} while (0)
+ #endif
+-}
+ 
+ __inline static void _set_timer(_timer *ptimer, u32 delay_time)
+ {
+@@ -410,16 +417,25 @@ __inline static void _cancel_timer(_timer *ptimer, u8 *bcancelled)
+ #endif
+ }
+ 
+-static inline void _init_workitem(_workitem *pwork, void *pfunc, void *cntx)
+-{
+ #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 20))
+-	INIT_WORK(pwork, pfunc);
++#define _init_workitem(pwork, pfunc, cntx) \
++	do { \
++		(void)(cntx); \
++		INIT_WORK((pwork), (pfunc)); \
++	} while (0)
+ #elif (LINUX_VERSION_CODE > KERNEL_VERSION(2, 5, 41))
+-	INIT_WORK(pwork, pfunc, pwork);
++#define _init_workitem(pwork, pfunc, cntx) \
++	do { \
++		(void)(cntx); \
++		INIT_WORK((pwork), (pfunc), (pwork)); \
++	} while (0)
+ #else
+-	INIT_TQUEUE(pwork, pfunc, pwork);
++#define _init_workitem(pwork, pfunc, cntx) \
++	do { \
++		(void)(cntx); \
++		INIT_TQUEUE((pwork), (pfunc), (pwork)); \
++	} while (0)
+ #endif
+-}
+ 
+ __inline static void _set_workitem(_workitem *pwork)
+ {
+diff --git a/os_dep/osdep_service.c b/os_dep/osdep_service.c
+index e1d5015..d29566c 100644
+--- a/os_dep/osdep_service.c
++++ b/os_dep/osdep_service.c
+@@ -1178,13 +1178,11 @@ inline void rtw_hlist_del_rcu(rtw_hlist_node *n)
+ #endif
+ }
+ 
++#ifndef PLATFORM_LINUX
+ void rtw_init_timer(_timer *ptimer, void *padapter, void *pfunc, void *ctx)
+ {
+ 	_adapter *adapter = (_adapter *)padapter;
+ 
+-#ifdef PLATFORM_LINUX
+-	_init_timer(ptimer, adapter->pnetdev, pfunc, ctx);
+-#endif
+ #ifdef PLATFORM_FREEBSD
+ 	_init_timer(ptimer, adapter->pifp, pfunc, ctx);
+ #endif
+@@ -1192,6 +1190,7 @@ void rtw_init_timer(_timer *ptimer, void *padapter, void *pfunc, void *ctx)
+ 	_init_timer(ptimer, adapter->hndis_adapter, pfunc, ctx);
+ #endif
+ }
++#endif
+ 
+ /*
+ 
+@@ -1200,14 +1199,9 @@ Caller must check if the list is empty before calling rtw_list_delete
+ */
+ 
+ 
++#ifndef PLATFORM_LINUX
+ void _rtw_init_sema(_sema	*sema, int init_val)
+ {
+-
+-#ifdef PLATFORM_LINUX
+-
+-	sema_init(sema, init_val);
+-
+-#endif
+ #ifdef PLATFORM_FREEBSD
+ 	sema_init(sema, init_val, "rtw_drv");
+ #endif
+@@ -1223,6 +1217,7 @@ void _rtw_init_sema(_sema	*sema, int init_val)
+ #endif
+ 
+ }
++#endif
+ 
+ void _rtw_free_sema(_sema	*sema)
+ {
+@@ -1373,14 +1368,9 @@ void	_rtw_mutex_free(_mutex *pmutex)
+ #endif
+ }
+ 
++#ifndef PLATFORM_LINUX
+ void	_rtw_spinlock_init(_lock *plock)
+ {
+-
+-#ifdef PLATFORM_LINUX
+-
+-	spin_lock_init(plock);
+-
+-#endif
+ #ifdef PLATFORM_FREEBSD
+ 	mtx_init(plock, "", NULL, MTX_DEF | MTX_RECURSE);
+ #endif
+@@ -1391,6 +1381,7 @@ void	_rtw_spinlock_init(_lock *plock)
+ #endif
+ 
+ }
++#endif
+ 
+ void	_rtw_spinlock_free(_lock *plock)
+ {
+@@ -1503,11 +1494,13 @@ void	_rtw_spinunlock_ex(_lock *plock)
+ 
+ 
+ 
++#ifndef PLATFORM_LINUX
+ void _rtw_init_queue(_queue *pqueue)
+ {
+ 	_rtw_init_listhead(&(pqueue->queue));
+ 	_rtw_spinlock_init(&(pqueue->lock));
+ }
++#endif
+ 
+ void _rtw_deinit_queue(_queue *pqueue)
+ {
