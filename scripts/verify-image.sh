@@ -212,8 +212,15 @@ verify_rtl8189es_image_module() {
 		trap - 0 1 2 15
 		return
 	fi
+	if ! readelf -rW "$ARTIFACT_DIR/rtl8189es.image.ko" > "$ARTIFACT_DIR/rtl8189es.image.relocations.txt"; then
+		fail_full "FINAL_IMAGE_RTL8189ES_RELOCATIONS"
+		rm -rf "$image_work"
+		trap - 0 1 2 15
+		return
+	fi
 
 	symbols="$ARTIFACT_DIR/rtl8189es.image.symbols.txt"
+	relocations="$ARTIFACT_DIR/rtl8189es.image.relocations.txt"
 	if awk '$8 == "rtw_os_ndev_register_ex" && $7 != "UND" { found = 1 } END { exit !found }' "$symbols"; then
 		record_full "FINAL_IMAGE_REGISTER_EX=PASS"
 	else
@@ -228,6 +235,18 @@ verify_rtl8189es_image_module() {
 		record_full "FINAL_IMAGE_CFG80211_REGISTER_NETDEVICE=PASS"
 	else
 		fail_full "FINAL_IMAGE_CFG80211_REGISTER_NETDEVICE"
+	fi
+	if awk '$8 == "_rtw_mutex_init" || $8 == "rtw_mutex_init" { found = 1 } END { exit !found }' "$symbols"; then
+		fail_full "FINAL_IMAGE_RTW_MUTEX_INIT_WRAPPER_ABSENT"
+	else
+		record_full "FINAL_IMAGE_RTW_MUTEX_INIT_WRAPPER_ABSENT=PASS"
+	fi
+	mutex_init_relocations=$(awk '$0 ~ /[[:space:]]__mutex_init([[:space:]]|$)/ { count++ } END { print count + 0 }' "$relocations")
+	record_full "FINAL_IMAGE_MUTEX_INIT_RELOCATIONS=$mutex_init_relocations"
+	if [ "$mutex_init_relocations" -gt 1 ]; then
+		record_full "FINAL_IMAGE_MUTEX_INIT_CALL_SITES=PASS"
+	else
+		fail_full "FINAL_IMAGE_MUTEX_INIT_CALL_SITES"
 	fi
 
 	rm -rf "$image_work"

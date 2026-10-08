@@ -265,6 +265,7 @@ jobs:
             rtl8189es.build-check.txt \
             rtl8189es.image.ko \
             rtl8189es.image.sha256 \
+            rtl8189es.image.relocations.txt \
             rtl8189es.image.symbols.txt \
             rtl8189es.modules.d \
             rtl8189es-uci-defaults-50_rtl-wifi \

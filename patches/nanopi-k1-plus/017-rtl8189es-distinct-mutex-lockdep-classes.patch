@@ -1,0 +1,54 @@
+diff --git a/include/osdep_service.h b/include/osdep_service.h
+index d031222..94fcbf3 100644
+--- a/include/osdep_service.h
++++ b/include/osdep_service.h
+@@ -331,7 +331,17 @@ extern void	_rtw_init_sema(_sema *sema, int init_val);
+ extern void	_rtw_free_sema(_sema	*sema);
+ extern void	_rtw_up_sema(_sema	*sema);
+ extern u32	_rtw_down_sema(_sema *sema);
++#ifdef PLATFORM_LINUX
++/* mutex_init() defines a static lock_class_key at its expansion site.
++ * Keep it at each caller so unrelated RTW mutexes use distinct classes. */
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 37))
++#define _rtw_mutex_init(pmutex) mutex_init(pmutex)
++#else
++#define _rtw_mutex_init(pmutex) init_MUTEX(pmutex)
++#endif
++#else
+ extern void	_rtw_mutex_init(_mutex *pmutex);
++#endif
+ extern void	_rtw_mutex_free(_mutex *pmutex);
+ #ifndef PLATFORM_FREEBSD
+ extern void	_rtw_spinlock_init(_lock *plock);
+diff --git a/os_dep/osdep_service.c b/os_dep/osdep_service.c
+index d6d326a..e1d5015 100644
+--- a/os_dep/osdep_service.c
++++ b/os_dep/osdep_service.c
+@@ -1330,17 +1330,9 @@ inline void _rtw_wait_for_comp(_completion *comp)
+ #endif
+ }
+ 
+-void	_rtw_mutex_init(_mutex *pmutex)
++#ifndef PLATFORM_LINUX
++void _rtw_mutex_init(_mutex *pmutex)
+ {
+-#ifdef PLATFORM_LINUX
+-
+-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 37))
+-	mutex_init(pmutex);
+-#else
+-	init_MUTEX(pmutex);
+-#endif
+-
+-#endif
+ #ifdef PLATFORM_FREEBSD
+ 	mtx_init(pmutex, "", NULL, MTX_DEF | MTX_RECURSE);
+ #endif
+@@ -1354,6 +1346,7 @@ void	_rtw_mutex_init(_mutex *pmutex)
+ 	*pmutex =  CreateMutex(NULL, _FALSE, NULL);
+ #endif
+ }
++#endif
+ 
+ void	_rtw_mutex_free(_mutex *pmutex);
+ void	_rtw_mutex_free(_mutex *pmutex)
