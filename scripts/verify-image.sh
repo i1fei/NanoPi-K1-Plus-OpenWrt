@@ -350,11 +350,20 @@ verify_rtl8189es_image_module() {
 			require_grep "$release_policy" '/dev/urandom' "FINAL_IMAGE_RANDOM_PASSWORD"
 			require_grep "$release_policy" 'passwd root' "FINAL_IMAGE_ROOT_PASSWORD"
 			require_grep "$release_policy" '/root/WIFI-PASSWORD.txt' "FINAL_IMAGE_CREDENTIAL_FILE"
-			require_grep "$release_policy" "set network.br_lan.name='br-lan'" "FINAL_IMAGE_BR_LAN_DEVICE"
-			require_grep "$release_policy" "add_list network.br_lan.ports='eth0'" "FINAL_IMAGE_BR_LAN_ETH0"
-			require_grep "$release_policy" "set network.lan.device='br-lan'" "FINAL_IMAGE_LAN_USES_BRIDGE"
+			require_grep "$release_policy" "config device 'br_lan'" "FINAL_IMAGE_BR_LAN_DEVICE"
+			require_grep "$release_policy" "list ports 'eth0'" "FINAL_IMAGE_BR_LAN_ETH0"
+			require_grep "$release_policy" "option device 'br-lan'" "FINAL_IMAGE_LAN_USES_BRIDGE"
 			require_grep "$release_policy" "set wireless.default_radio0.network='lan'" "FINAL_IMAGE_WIFI_UCI_LAN"
+			require_grep "$release_policy" "uhttpd.main.listen_http='192.168.1.1:80'" "FINAL_IMAGE_UHTTPD_LAN_HTTP"
 			require_grep "$release_policy" '/etc/wifi-release-done' "FINAL_IMAGE_WIFI_RELEASE_MARKER"
+			lan_ip_count=$(grep -Fc "option ipaddr '192.168.1.1'" "$release_policy" || true)
+			bridge_port_count=$(grep -Fc "list ports 'eth0'" "$release_policy" || true)
+			if [ "$lan_ip_count" -eq 1 ] && [ "$bridge_port_count" -eq 1 ] &&
+				! grep -Fq "option device 'eth0'" "$release_policy"; then
+				record_full "FINAL_IMAGE_NETWORK_TOPOLOGY_UNIQUE=PASS"
+			else
+				fail_full "FINAL_IMAGE_NETWORK_TOPOLOGY_UNIQUE"
+			fi
 		fi
 		if [ -f "$release_hint" ]; then
 			cp "$release_hint" "$ARTIFACT_DIR/k1-plus-wifi-credentials-hint.image"
@@ -751,7 +760,8 @@ verify_wifi_release_v1_profile() {
 	require_file "$ARTIFACT_DIR/k1-plus-wifi-credentials-hint" "WIFI_CREDENTIAL_HINT"
 	require_file "$ARTIFACT_DIR/k1-plus-wireless-config" "WIRELESS_CONFIG"
 	require_grep "$ARTIFACT_DIR/k1-plus-wireless-config" "^[[:space:]]*option network 'lan'$" "WIRELESS_CONFIG_NETWORK_LAN"
-	require_grep "$ARTIFACT_DIR/k1-plus-wifi-release-v1-policy" "set network.lan.device='br-lan'" "WIFI_RELEASE_BR_LAN"
+	require_grep "$ARTIFACT_DIR/k1-plus-wifi-release-v1-policy" "option device 'br-lan'" "WIFI_RELEASE_BR_LAN"
+	require_grep "$ARTIFACT_DIR/k1-plus-wifi-release-v1-policy" "uhttpd.main.listen_http='192.168.1.1:80'" "WIFI_RELEASE_UHTTPD_LAN_HTTP"
 
 	verify_rtl8189es_image_module
 	if [ "$VALIDATION_FAILURES" -eq "$profile_before" ]; then

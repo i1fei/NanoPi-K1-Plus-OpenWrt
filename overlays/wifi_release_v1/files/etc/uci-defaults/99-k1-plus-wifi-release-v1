@@ -37,23 +37,37 @@ umask 077
 {
 	printf 'SSID: %s\n' "$ssid"
 	printf 'Password: %s\n' "$password"
+	printf 'Management: http://192.168.1.1/\n'
+	printf 'Network note: before connecting eth0 to an existing LAN, change this LAN address and disable this device DHCP server.\n'
 } > /root/WIFI-PASSWORD.txt || disable_wifi 'credential file write failed'
 chmod 600 /root/WIFI-PASSWORD.txt || disable_wifi 'credential file permission failed'
 
-uci -q delete network.br_lan.ports 2>/dev/null || true
-uci -q batch <<EOF || disable_wifi 'LAN bridge update failed'
-set network.br_lan='device'
-set network.br_lan.name='br-lan'
-set network.br_lan.type='bridge'
-add_list network.br_lan.ports='eth0'
-set network.lan='interface'
-set network.lan.device='br-lan'
-set network.lan.proto='static'
-set network.lan.ipaddr='192.168.1.1'
-set network.lan.netmask='255.255.255.0'
-set network.lan.ip6assign='60'
+ula_prefix=$(uci -q get network.globals.ula_prefix || true)
+cat > /etc/config/network <<EOF || disable_wifi 'LAN bridge update failed'
+config interface 'loopback'
+	option device 'lo'
+	option proto 'static'
+	list ipaddr '127.0.0.1/8'
+
+config globals 'globals'
+	option ula_prefix '$ula_prefix'
+
+config device 'br_lan'
+	option name 'br-lan'
+	option type 'bridge'
+	list ports 'eth0'
+
+config interface 'lan'
+	option device 'br-lan'
+	option proto 'static'
+	option ipaddr '192.168.1.1'
+	option netmask '255.255.255.0'
+	option ip6assign '60'
 EOF
-uci -q commit network || disable_wifi 'LAN bridge commit failed'
+
+uci -q delete uhttpd.main.listen_http 2>/dev/null || true
+uci -q add_list uhttpd.main.listen_http='192.168.1.1:80' || disable_wifi 'uhttpd LAN listener update failed'
+uci -q commit uhttpd || disable_wifi 'uhttpd commit failed'
 
 uci -q batch <<EOF || disable_wifi 'wireless UCI update failed'
 set wireless.radio0.type='mac80211'

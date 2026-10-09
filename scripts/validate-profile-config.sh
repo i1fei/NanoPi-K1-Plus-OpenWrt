@@ -260,7 +260,9 @@ check_wifi_release_v1() {
 		CONFIG_PACKAGE_iw \
 		CONFIG_PACKAGE_iperf3 \
 		CONFIG_PACKAGE_rpcd-mod-iwinfo \
-		CONFIG_PACKAGE_luci; do
+		CONFIG_PACKAGE_luci \
+		CONFIG_PACKAGE_luci-mod-network \
+		CONFIG_PACKAGE_uhttpd; do
 		require_enabled "$symbol"
 	done
 
