@@ -75,7 +75,7 @@ check_common() {
 	require_enabled CONFIG_TARGET_sunxi
 	require_enabled CONFIG_TARGET_sunxi_cortexa53
 	require_enabled CONFIG_TARGET_sunxi_cortexa53_DEVICE_friendlyarm_nanopi-k1-plus
-	if [ "$profile" = wifi_compat_v3 ]; then
+	if [ "$profile" = wifi_compat_v3 ] || [ "$profile" = wifi_release_v1 ]; then
 		require_not_enabled CONFIG_LUCI_LANG_zh_Hans
 	else
 		require_enabled CONFIG_LUCI_LANG_zh_Hans
@@ -248,6 +248,35 @@ check_wifi_compat_v3() {
 	echo "WATCHCAT=EXCLUDED" >> "$resolution"
 }
 
+check_wifi_release_v1() {
+	require_value CONFIG_TARGET_ROOTFS_PARTSIZE 1024
+	for symbol in \
+		CONFIG_PACKAGE_dropbear \
+		CONFIG_PACKAGE_kmod-rtl8189es \
+		CONFIG_PACKAGE_wpad-openssl \
+		CONFIG_PACKAGE_wireless-regdb \
+		CONFIG_PACKAGE_libiwinfo \
+		CONFIG_PACKAGE_iwinfo \
+		CONFIG_PACKAGE_iw \
+		CONFIG_PACKAGE_iperf3 \
+		CONFIG_PACKAGE_rpcd-mod-iwinfo \
+		CONFIG_PACKAGE_luci; do
+		require_enabled "$symbol"
+	done
+
+	for symbol in \
+		CONFIG_PACKAGE_luci-i18n-base-zh-cn \
+		CONFIG_PACKAGE_openssh-server \
+		CONFIG_PACKAGE_samba4-server; do
+		require_not_enabled "$symbol"
+	done
+
+	echo "RTL8189ES_DRIVER=SELECTED" >> "$resolution"
+	echo "WIFI_AP_STACK=SELECTED" >> "$resolution"
+	echo "WIFI_NETWORK=LAN" >> "$resolution"
+	echo "RANDOM_WIFI_AND_ROOT_PASSWORD=REQUIRED" >> "$resolution"
+}
+
 check_rtl8189es_inert() {
 	require_value CONFIG_TARGET_ROOTFS_PARTSIZE 4096
 	for symbol in \
@@ -362,6 +391,7 @@ case "$profile" in
 	full) check_full ;;
 	wifi_compat|wifi_compat_v2) check_wifi_compat ;;
 	wifi_compat_v3) check_wifi_compat_v3 ;;
+	wifi_release_v1) check_wifi_release_v1 ;;
 	rtl8189es_inert) check_rtl8189es_inert ;;
 	buddha) check_buddha ;;
 	*) note_fail "unknown profile: $profile" ;;

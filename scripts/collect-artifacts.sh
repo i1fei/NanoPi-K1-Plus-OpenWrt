@@ -79,6 +79,12 @@ done
 [ -f "$SOURCE_DIR/files/etc/uci-defaults/97-k1-plus-wifi-compat-v3" ] &&
 	cp "$SOURCE_DIR/files/etc/uci-defaults/97-k1-plus-wifi-compat-v3" \
 		"$ARTIFACT_DIR/k1-plus-wifi-compat-v3-policy"
+[ -f "$SOURCE_DIR/files/etc/uci-defaults/99-k1-plus-wifi-release-v1" ] &&
+	cp "$SOURCE_DIR/files/etc/uci-defaults/99-k1-plus-wifi-release-v1" \
+		"$ARTIFACT_DIR/k1-plus-wifi-release-v1-policy"
+[ -f "$SOURCE_DIR/files/etc/profile.d/99-k1-plus-wifi-credentials.sh" ] &&
+	cp "$SOURCE_DIR/files/etc/profile.d/99-k1-plus-wifi-credentials.sh" \
+		"$ARTIFACT_DIR/k1-plus-wifi-credentials-hint"
 [ -f "$SOURCE_DIR/files/etc/config/wireless" ] &&
 	cp "$SOURCE_DIR/files/etc/config/wireless" \
 		"$ARTIFACT_DIR/k1-plus-wireless-config"

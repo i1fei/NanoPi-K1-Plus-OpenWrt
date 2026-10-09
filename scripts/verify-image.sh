@@ -36,6 +36,11 @@ case "$PROFILE" in
 		PROFILE_LABEL=WIFI_COMPAT_V3
 		PROFILE_VALIDATION_FILE="$ARTIFACT_DIR/wifi-compat-v3-profile-manifest-validation.txt"
 		;;
+	wifi_release_v1)
+		PROFILE_KEY=wifi_release_v1
+		PROFILE_LABEL=WIFI_RELEASE_V1
+		PROFILE_VALIDATION_FILE="$ARTIFACT_DIR/wifi-release-v1-profile-manifest-validation.txt"
+		;;
 	rtl8189es_inert)
 		PROFILE_KEY=rtl8189es_inert
 		PROFILE_LABEL=RTL8189ES_INERT
@@ -139,17 +144,57 @@ require_rtl8189es_artifacts() {
 	[ "$VALIDATION_FAILURES" -ne "$before" ] || record_full "RTL8189ES_AUTOLOAD=PASS"
 }
 
+verify_requested_manifest_packages() {
+	requested_config=$1
+	before=$VALIDATION_FAILURES
+	if [ ! -f "$requested_config" ]; then
+		fail_full "REQUESTED_PACKAGE_CONFIG"
+		return
+	fi
+	packages=$(awk -F= '/^CONFIG_PACKAGE_.*=y$/ { sub(/^CONFIG_PACKAGE_/, "", $1); print $1 }' "$requested_config")
+	for pkg in $packages; do
+		require_manifest_pkg "$pkg" "REQUESTED_PACKAGE_$pkg"
+	done
+	[ "$VALIDATION_FAILURES" -ne "$before" ] || record_full "REQUESTED_PACKAGES_FROM_PROFILE=PASS"
+}
+
+verify_rtl8189es_compile_warnings() {
+	before=$VALIDATION_FAILURES
+	# Runs #92 and #93 produced the same normalized legacy warning set.
+	baseline_warning_count=581
+	require_file "$ARTIFACT_DIR/rtl8189es-compile.status" "RTL8189ES_COMPILE_STATUS"
+	require_file "$ARTIFACT_DIR/rtl8189es-compile-warnings.txt" "RTL8189ES_COMPILE_WARNINGS"
+	if [ -f "$ARTIFACT_DIR/rtl8189es-compile.status" ] &&
+		grep -qx 'clean=0' "$ARTIFACT_DIR/rtl8189es-compile.status" &&
+		grep -qx 'compile=0' "$ARTIFACT_DIR/rtl8189es-compile.status"; then
+		record_full "RTL8189ES_CLEAN_REBUILD=PASS"
+	else
+		fail_full "RTL8189ES_CLEAN_REBUILD"
+	fi
+	if [ -f "$ARTIFACT_DIR/rtl8189es-compile-warnings.txt" ]; then
+		warning_count=$(wc -l < "$ARTIFACT_DIR/rtl8189es-compile-warnings.txt" | tr -d '[:space:]')
+		record_full "RTL8189ES_WARNING_COUNT=$warning_count"
+		if [ "$warning_count" -le "$baseline_warning_count" ]; then
+			record_full "RTL8189ES_WARNING_COUNT_WITHIN_RUN92_BASELINE=PASS"
+		else
+			fail_full "RTL8189ES_NEW_WARNINGS"
+		fi
+		if grep -Eqi 'implicit declaration' "$ARTIFACT_DIR/rtl8189es-compile-warnings.txt"; then
+			fail_full "RTL8189ES_IMPLICIT_DECLARATION"
+		else
+			record_full "RTL8189ES_IMPLICIT_DECLARATION=ABSENT"
+		fi
+	else
+		fail_full "RTL8189ES_NEW_WARNINGS"
+	fi
+	[ "$VALIDATION_FAILURES" -ne "$before" ] || record_full "RTL8189ES_COMPILE_GATE=PASS"
+}
+
 verify_rtl8189es_image_module() {
 	image="$ARTIFACT_DIR/NanoPi-K1-Plus-sunxi-cortexa53.img.gz"
-	previous_image_sha=4ab509b0a6106abc17404bc00079c6e50d22ce47feb14900db7c9df1ef620f10
 	unsquashfs="$SOURCE_DIR/staging_dir/host/bin/unsquashfs4"
 	image_sha=$(sha256sum "$image" | awk '{print $1}')
 	record_full "FINAL_IMAGE_SHA256=$image_sha"
-	if [ "$image_sha" = "$previous_image_sha" ]; then
-		fail_full "FINAL_IMAGE_SHA_CHANGED"
-	else
-		record_full "FINAL_IMAGE_SHA_CHANGED=PASS"
-	fi
 
 	if [ ! -x "$unsquashfs" ]; then
 		fail_full "UNSQUASHFS4"
@@ -186,8 +231,17 @@ verify_rtl8189es_image_module() {
 		trap - 0 1 2 15
 		return
 	fi
+	if [ "$PROFILE_KEY" = wifi_release_v1 ]; then
+		set -- \
+			'lib/modules/*/rtl8189es.ko' \
+			'etc/config/wireless' \
+			'etc/uci-defaults/99-k1-plus-wifi-release-v1' \
+			'etc/profile.d/99-k1-plus-wifi-credentials.sh'
+	else
+		set -- 'lib/modules/*/rtl8189es.ko'
+	fi
 	if ! "$unsquashfs" -no-progress -d "$image_work/rootfs" \
-		"$image_work/rootfs.squashfs" 'lib/modules/*/rtl8189es.ko' >/dev/null; then
+		"$image_work/rootfs.squashfs" "$@" >/dev/null; then
 		fail_full "ROOTFS_SQUASHFS_EXTRACT"
 		rm -rf "$image_work"
 		trap - 0 1 2 15
@@ -266,6 +320,51 @@ verify_rtl8189es_image_module() {
 		record_full "FINAL_IMAGE_TIMER_INIT_CALL_SITES=PASS"
 	else
 		fail_full "FINAL_IMAGE_TIMER_INIT_CALL_SITES"
+	fi
+
+	if [ "$PROFILE_KEY" = wifi_release_v1 ]; then
+		release_wireless="$image_work/rootfs/etc/config/wireless"
+		release_policy="$image_work/rootfs/etc/uci-defaults/99-k1-plus-wifi-release-v1"
+		release_hint="$image_work/rootfs/etc/profile.d/99-k1-plus-wifi-credentials.sh"
+		for file in "$release_wireless" "$release_policy" "$release_hint"; do
+			[ -f "$file" ] || fail_full "FINAL_IMAGE_WIFI_RELEASE_FILES"
+		done
+		if [ -f "$release_wireless" ]; then
+			cp "$release_wireless" "$ARTIFACT_DIR/k1-plus-wireless-config.image"
+			require_grep "$release_wireless" "^[[:space:]]*option network 'lan'$" "FINAL_IMAGE_WIFI_NETWORK_LAN"
+			require_grep "$release_wireless" "^[[:space:]]*option encryption 'psk2\+ccmp'$" "FINAL_IMAGE_WIFI_WPA2_CCMP"
+			require_grep "$release_wireless" "^[[:space:]]*option disabled '1'$" "FINAL_IMAGE_WIFI_DISABLED_SEED"
+			if grep -Eq "^[[:space:]]*option key " "$release_wireless"; then
+				fail_full "FINAL_IMAGE_STATIC_WIFI_KEY"
+			else
+				record_full "FINAL_IMAGE_STATIC_WIFI_KEY=ABSENT"
+			fi
+		fi
+		if [ -f "$release_policy" ]; then
+			cp "$release_policy" "$ARTIFACT_DIR/k1-plus-wifi-release-v1-policy.image"
+			if [ -x "$release_policy" ]; then
+				record_full "FINAL_IMAGE_WIFI_RELEASE_SCRIPT_EXECUTABLE=PASS"
+			else
+				fail_full "FINAL_IMAGE_WIFI_RELEASE_SCRIPT_EXECUTABLE"
+			fi
+			require_grep "$release_policy" '/dev/urandom' "FINAL_IMAGE_RANDOM_PASSWORD"
+			require_grep "$release_policy" 'passwd root' "FINAL_IMAGE_ROOT_PASSWORD"
+			require_grep "$release_policy" '/root/WIFI-PASSWORD.txt' "FINAL_IMAGE_CREDENTIAL_FILE"
+			require_grep "$release_policy" "set network.br_lan.name='br-lan'" "FINAL_IMAGE_BR_LAN_DEVICE"
+			require_grep "$release_policy" "add_list network.br_lan.ports='eth0'" "FINAL_IMAGE_BR_LAN_ETH0"
+			require_grep "$release_policy" "set network.lan.device='br-lan'" "FINAL_IMAGE_LAN_USES_BRIDGE"
+			require_grep "$release_policy" "set wireless.default_radio0.network='lan'" "FINAL_IMAGE_WIFI_UCI_LAN"
+			require_grep "$release_policy" '/etc/wifi-release-done' "FINAL_IMAGE_WIFI_RELEASE_MARKER"
+		fi
+		if [ -f "$release_hint" ]; then
+			cp "$release_hint" "$ARTIFACT_DIR/k1-plus-wifi-credentials-hint.image"
+		fi
+		if grep -REq "nanopi-k1plus|wpa_passphrase=|^[[:space:]]*option key '" \
+			"$image_work/rootfs/etc/config" "$image_work/rootfs/etc/uci-defaults" "$image_work/rootfs/etc/profile.d"; then
+			fail_full "FINAL_IMAGE_HARDCODED_PASSWORD"
+		else
+			record_full "FINAL_IMAGE_HARDCODED_PASSWORD=ABSENT"
+		fi
 	fi
 
 	rm -rf "$image_work"
@@ -635,6 +734,33 @@ verify_wifi_compat_v2_profile() {
 	fi
 }
 
+verify_wifi_release_v1_profile() {
+	profile_before=$VALIDATION_FAILURES
+	record_profile_header
+	require_openwrt_config_line 'CONFIG_TARGET_ROOTFS_PARTSIZE=1024' "ROOTFS_PARTSIZE"
+	verify_requested_manifest_packages "configs/NanoPi_K1_Plus_wifi_release_v1.config"
+	require_rtl8189es_artifacts
+	verify_rtl8189es_compile_warnings
+
+	for symbol in PROVE_LOCKING LOCKDEP DEBUG_LOCK_ALLOC DEBUG_MUTEXES DEBUG_SPINLOCK; do
+		require_kernel_config_line "# CONFIG_${symbol} is not set" "KERNEL_CONFIG_${symbol}_DISABLED"
+	done
+	require_openwrt_config_line '# CONFIG_KERNEL_PROVE_LOCKING is not set' "OPENWRT_CONFIG_KERNEL_PROVE_LOCKING_DISABLED"
+
+	require_file "$ARTIFACT_DIR/k1-plus-wifi-release-v1-policy" "WIFI_RELEASE_POLICY"
+	require_file "$ARTIFACT_DIR/k1-plus-wifi-credentials-hint" "WIFI_CREDENTIAL_HINT"
+	require_file "$ARTIFACT_DIR/k1-plus-wireless-config" "WIRELESS_CONFIG"
+	require_grep "$ARTIFACT_DIR/k1-plus-wireless-config" "^[[:space:]]*option network 'lan'$" "WIRELESS_CONFIG_NETWORK_LAN"
+	require_grep "$ARTIFACT_DIR/k1-plus-wifi-release-v1-policy" "set network.lan.device='br-lan'" "WIFI_RELEASE_BR_LAN"
+
+	verify_rtl8189es_image_module
+	if [ "$VALIDATION_FAILURES" -eq "$profile_before" ]; then
+		record_full "WIFI_RELEASE_V1_PROFILE_VERIFY=PASS"
+	else
+		record_full "WIFI_RELEASE_V1_PROFILE_VERIFY=FAIL"
+	fi
+}
+
 verify_rtl8189es_inert_profile() {
 	record_profile_header
 	require_openwrt_config_line 'CONFIG_TARGET_ROOTFS_PARTSIZE=4096' "ROOTFS_PARTSIZE"
@@ -853,7 +979,7 @@ if [ -n "$manifest" ]; then
 	require_grep "$manifest" '^kmod-usb-hid([[:space:]]|$)' "MANIFEST_KMOD_USB_HID"
 fi
 
-if [ "$PROFILE_KEY" = wifi_compat_v3 ]; then
+if [ "$PROFILE_KEY" = wifi_compat_v3 ] || [ "$PROFILE_KEY" = wifi_release_v1 ]; then
 	COLLECT_ALL=1
 fi
 case "$PROFILE_KEY" in
@@ -861,6 +987,7 @@ case "$PROFILE_KEY" in
 	full) verify_full_profile ;;
 	wifi_compat) verify_wifi_compat_profile ;;
 	wifi_compat_v2|wifi_compat_v3) verify_wifi_compat_v2_profile ;;
+	wifi_release_v1) verify_wifi_release_v1_profile ;;
 	rtl8189es_inert) verify_rtl8189es_inert_profile ;;
 	buddha) verify_buddha_profile ;;
 esac

@@ -19,6 +19,7 @@ jobs:
           - wifi_compat
           - wifi_compat_v2
           - wifi_compat_v3
+          - wifi_release_v1
           - rtl8189es_inert
     env:
       SOURCE_REF: 4cafb73e88b6cf61cfeca2ee6cf8ecabb60f7a07

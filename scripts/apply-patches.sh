@@ -109,7 +109,7 @@ fi
 
 # wifi_compat_v3: same as v2 but WITHOUT the 012-reuse workaround, so the
 # del_virtual_intf fix (015) is actually exercised by hostap wdev_remove.
-if [ "$PATCH_MODE" = "wifi_compat_v3" ]; then
+if [ "$PATCH_MODE" = "wifi_compat_v3" ] || [ "$PATCH_MODE" = "wifi_release_v1" ]; then
 	for patch in \
 		"$PATCH_DIR/007-stabilize-k1-plus-rtl8189es-radio.patch" \
 		"$PATCH_DIR/008-fix-k1-plus-runtime-radio-generation.patch" \

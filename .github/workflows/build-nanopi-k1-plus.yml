@@ -96,22 +96,38 @@ jobs:
           cd .work/openwrt
           kernel_config_fragment=target/linux/generic/config-6.18
           [ -f "$kernel_config_fragment" ] || { echo "missing kernel config fragment: $kernel_config_fragment" >&2; exit 1; }
-          for symbol in CONFIG_DEBUG_KERNEL CONFIG_PROVE_LOCKING CONFIG_DEBUG_LOCK_ALLOC CONFIG_DEBUG_MUTEXES CONFIG_LOCKDEP; do
-            if grep -q "^${symbol}=" "$kernel_config_fragment"; then
-              sed -i "s/^${symbol}=.*/${symbol}=y/" "$kernel_config_fragment"
-            elif grep -q "^# ${symbol} is not set$" "$kernel_config_fragment"; then
-              sed -i "s/^# ${symbol} is not set$/${symbol}=y/" "$kernel_config_fragment"
-            else
-              printf '%s=y\n' "$symbol" >> "$kernel_config_fragment"
-            fi
-          done
+          if [ "$BUILD_PROFILE" = wifi_release_v1 ]; then
+            for symbol in CONFIG_PROVE_LOCKING CONFIG_LOCKDEP CONFIG_DEBUG_LOCK_ALLOC CONFIG_DEBUG_MUTEXES CONFIG_DEBUG_SPINLOCK; do
+              if grep -q "^${symbol}=" "$kernel_config_fragment"; then
+                sed -i "s/^${symbol}=.*/# ${symbol} is not set/" "$kernel_config_fragment"
+              elif ! grep -q "^# ${symbol} is not set$" "$kernel_config_fragment"; then
+                printf '# %s is not set\n' "$symbol" >> "$kernel_config_fragment"
+              fi
+            done
+          else
+            for symbol in CONFIG_DEBUG_KERNEL CONFIG_PROVE_LOCKING CONFIG_DEBUG_LOCK_ALLOC CONFIG_DEBUG_MUTEXES CONFIG_LOCKDEP; do
+              if grep -q "^${symbol}=" "$kernel_config_fragment"; then
+                sed -i "s/^${symbol}=.*/${symbol}=y/" "$kernel_config_fragment"
+              elif grep -q "^# ${symbol} is not set$" "$kernel_config_fragment"; then
+                sed -i "s/^# ${symbol} is not set$/${symbol}=y/" "$kernel_config_fragment"
+              else
+                printf '%s=y\n' "$symbol" >> "$kernel_config_fragment"
+              fi
+            done
+          fi
           top_level_config=.config
           [ -f "$top_level_config" ] || {
             echo "missing top-level config: $top_level_config" >&2
             exit 1
           }
           for symbol in CONFIG_KERNEL_PROVE_LOCKING; do
-            if grep -q "^${symbol}=" "$top_level_config"; then
+            if [ "$BUILD_PROFILE" = wifi_release_v1 ]; then
+              if grep -q "^${symbol}=" "$top_level_config"; then
+                sed -i "s/^${symbol}=.*/# ${symbol} is not set/" "$top_level_config"
+              elif ! grep -q "^# ${symbol} is not set$" "$top_level_config"; then
+                printf '# %s is not set\n' "$symbol" >> "$top_level_config"
+              fi
+            elif grep -q "^${symbol}=" "$top_level_config"; then
               sed -i "s/^${symbol}=.*/${symbol}=y/" "$top_level_config"
             elif grep -q "^# ${symbol} is not set$" "$top_level_config"; then
               sed -i "s/^# ${symbol} is not set$/${symbol}=y/" "$top_level_config"
@@ -144,6 +160,23 @@ jobs:
             result=${PIPESTATUS[0]}
           fi
           exit "$result"
+
+      - name: Capture RTL8189ES compile warnings
+        if: success()
+        run: |
+          set +e
+          cd .work/openwrt
+          make package/kernel/rtl8189es/clean > "$GITHUB_WORKSPACE/.work/rtl8189es-compile.log" 2>&1
+          clean_result=$?
+          make package/kernel/rtl8189es/compile -j1 V=s 2>&1 | tee -a "$GITHUB_WORKSPACE/.work/rtl8189es-compile.log"
+          compile_result=${PIPESTATUS[0]}
+          cd "$GITHUB_WORKSPACE"
+          printf 'clean=%s\ncompile=%s\n' "$clean_result" "$compile_result" > .work/rtl8189es-compile.status
+          sed -E 's/\x1B\[[0-9;]*[mK]//g' .work/rtl8189es-compile.log |
+            grep -Ei '(^|/)(core|hal|include|os_dep|platform)/.*warning:|implicit declaration|^WARNING: modpost:.*rtl8189es' |
+            sed -E 's#^.*rtl8189es-[^/]+/##; s/:[0-9]+:[0-9]+:/:LINE:/' |
+            sort -u > .work/rtl8189es-compile-warnings.txt || true
+          exit 0
 
       - name: Capture RTL8189ES compile evidence
         if: success()
@@ -225,12 +258,15 @@ jobs:
             .work/openwrt/bin/targets/sunxi/cortexa53 \
             .work/artifact \
             .work/openwrt
-          ./scripts/verify-image.sh .work/artifact "$BUILD_PROFILE" .work/openwrt
           if [ -f .work/build-single.log ]; then
             cat .work/build-parallel.log .work/build-single.log > .work/artifact/build.log
           else
             cp .work/build-parallel.log .work/artifact/build.log
           fi
+          for file in rtl8189es-compile.log rtl8189es-compile.status rtl8189es-compile-warnings.txt; do
+            [ -f ".work/$file" ] && cp ".work/$file" ".work/artifact/$file"
+          done
+          ./scripts/verify-image.sh .work/artifact "$BUILD_PROFILE" .work/openwrt
           cp .work/source.log .work/artifact/source.log
           cp .work/patch.log .work/artifact/patch.log
           [ -f .work/target-output-files.txt ] && cp .work/target-output-files.txt .work/artifact/target-output-files.txt
@@ -268,6 +304,9 @@ jobs:
             rtl8189es.image.relocations.txt \
             rtl8189es.image.symbols.txt \
             rtl8189es.modules.d \
+            rtl8189es-compile.log \
+            rtl8189es-compile.status \
+            rtl8189es-compile-warnings.txt \
             rtl8189es-uci-defaults-50_rtl-wifi \
             stage-a-display-validation.txt \
             base-profile-manifest-validation.txt \
@@ -275,6 +314,9 @@ jobs:
             wifi-compat-profile-manifest-validation.txt \
             wifi-compat-v2-profile-manifest-validation.txt \
             wifi-compat-v3-profile-manifest-validation.txt \
+            wifi-release-v1-profile-manifest-validation.txt \
+            k1-plus-wifi-release-v1-policy \
+            k1-plus-wifi-credentials-hint \
             rtl8189es-inert-profile-manifest-validation.txt \
             buddha-profile-manifest-validation.txt; do
             [ -f ".work/artifact/$file" ] && cp ".work/artifact/$file" ".work/failure/$file"

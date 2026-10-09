@@ -1,0 +1,78 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+[ -e /etc/wifi-release-done ] && exit 0
+[ "$(board_name)" = "friendlyelec,nanopi-k1-plus" ] || exit 0
+[ -f /etc/modules.d/rtl8189es ] || exit 0
+
+disable_wifi() {
+	logger -t k1-plus "wifi_release_v1 provisioning failed: $1"
+	uci -q set wireless.radio0.disabled='1'
+	uci -q set wireless.default_radio0.disabled='1'
+	uci -q commit wireless
+	exit 0
+}
+
+[ -e /etc/config/wireless ] || wifi config >/dev/null 2>&1 || disable_wifi 'wireless config generation failed'
+
+mac=$(cat /sys/class/net/eth0/address 2>/dev/null) || disable_wifi 'missing eth0 MAC'
+compact_mac=$(printf '%s' "$mac" | tr -d ':')
+[ "${#compact_mac}" -eq 12 ] || disable_wifi 'invalid eth0 MAC'
+suffix=$(printf '%s' "$compact_mac" | cut -c9-12 | tr 'a-f' 'A-F')
+[ "${#suffix}" -eq 4 ] || disable_wifi 'invalid SSID suffix'
+ssid="NanoPi-$suffix"
+
+password=''
+attempt=0
+while [ "${#password}" -lt 12 ] && [ "$attempt" -lt 5 ]; do
+	password=$(dd if=/dev/urandom bs=24 count=1 2>/dev/null | base64 | tr -dc 'A-Za-z0-9' | cut -c1-12)
+	attempt=$((attempt + 1))
+done
+[ "${#password}" -eq 12 ] || disable_wifi 'password generation failed'
+
+printf '%s\n%s\n' "$password" "$password" | passwd root >/dev/null 2>&1 || disable_wifi 'root password update failed'
+
+umask 077
+{
+	printf 'SSID: %s\n' "$ssid"
+	printf 'Password: %s\n' "$password"
+} > /root/WIFI-PASSWORD.txt || disable_wifi 'credential file write failed'
+chmod 600 /root/WIFI-PASSWORD.txt || disable_wifi 'credential file permission failed'
+
+uci -q delete network.br_lan.ports 2>/dev/null || true
+uci -q batch <<EOF || disable_wifi 'LAN bridge update failed'
+set network.br_lan='device'
+set network.br_lan.name='br-lan'
+set network.br_lan.type='bridge'
+add_list network.br_lan.ports='eth0'
+set network.lan='interface'
+set network.lan.device='br-lan'
+set network.lan.proto='static'
+set network.lan.ipaddr='192.168.1.1'
+set network.lan.netmask='255.255.255.0'
+set network.lan.ip6assign='60'
+EOF
+uci -q commit network || disable_wifi 'LAN bridge commit failed'
+
+uci -q batch <<EOF || disable_wifi 'wireless UCI update failed'
+set wireless.radio0.type='mac80211'
+set wireless.radio0.phy='phy0'
+set wireless.radio0.band='2g'
+set wireless.radio0.channel='6'
+set wireless.radio0.htmode='HT20'
+set wireless.radio0.country='CN'
+set wireless.radio0.disabled='0'
+set wireless.default_radio0.device='radio0'
+set wireless.default_radio0.network='lan'
+set wireless.default_radio0.mode='ap'
+set wireless.default_radio0.ssid='$ssid'
+set wireless.default_radio0.encryption='psk2+ccmp'
+set wireless.default_radio0.key='$password'
+set wireless.default_radio0.disabled='0'
+EOF
+uci -q commit wireless || disable_wifi 'wireless UCI commit failed'
+
+touch /etc/wifi-release-done || disable_wifi 'completion marker failed'
+logger -t k1-plus "wifi_release_v1 provisioned WPA2 AP $ssid on br-lan"
+exit 0
