@@ -1,0 +1,475 @@
+diff --git a/core/rtw_cmd.c b/core/rtw_cmd.c
+index e5d3344b780599f0758bc8b9316c4bab535e00ef..1e5d2f1ae9a1d3057d0598f8dc480e0afc9cdd97 100644
+--- a/core/rtw_cmd.c
++++ b/core/rtw_cmd.c
+@@ -5807,9 +5807,9 @@ void rtw_joinbss_cmd_callback(_adapter	*padapter,  struct cmd_obj *pcmd)
+ 	if (pcmd->res == H2C_DROPPED) {
+ 		/* TODO: cancel timer and do timeout handler directly... */
+ 		/* need to make timeout handlerOS independent */
+-		_set_timer(&pmlmepriv->assoc_timer, 1);
++		rtw_assoc_timeout_arm(pmlmepriv, 1);
+ 	} else if (pcmd->res != H2C_SUCCESS)
+-		_set_timer(&pmlmepriv->assoc_timer, 1);
++		rtw_assoc_timeout_arm(pmlmepriv, 1);
+ 
+ 	rtw_free_cmd_obj(pcmd);
+ 
+@@ -5824,9 +5824,9 @@ void rtw_create_ibss_post_hdl(_adapter *padapter, int status)
+ 	struct wlan_network *mlme_cur_network = &(pmlmepriv->cur_network);
+ 
+ 	if (status != H2C_SUCCESS)
+-		_set_timer(&pmlmepriv->assoc_timer, 1);
++		rtw_assoc_timeout_arm(pmlmepriv, 1);
+ 
+-	_cancel_timer_ex(&pmlmepriv->assoc_timer);
++	rtw_assoc_timeout_drain(pmlmepriv);
+ 
+ 	_enter_critical_bh(&pmlmepriv->lock, &irqL);
+ 
+diff --git a/core/rtw_ioctl_set.c b/core/rtw_ioctl_set.c
+index 2f58f10d1e208f51f54c61f701db3c83638b01fa..b7ad20f2195695c6fcd1d565eb6c33dfff4b3056 100644
+--- a/core/rtw_ioctl_set.c
++++ b/core/rtw_ioctl_set.c
+@@ -132,7 +132,7 @@ u8 rtw_do_join(_adapter *padapter)
+ 		select_ret = rtw_select_and_join_from_scanned_queue(pmlmepriv);
+ 		if (select_ret == _SUCCESS) {
+ 			pmlmepriv->to_join = _FALSE;
+-			_set_timer(&pmlmepriv->assoc_timer, MAX_JOIN_TIMEOUT);
++			rtw_assoc_timeout_arm_locked(pmlmepriv, MAX_JOIN_TIMEOUT);
+ 		} else {
+ 			if (check_fwstate(pmlmepriv, WIFI_ADHOC_STATE) == _TRUE) {
+ 				/* submit createbss_cmd to change to a ADHOC_MASTER */
+diff --git a/core/rtw_mlme.c b/core/rtw_mlme.c
+index 481382f89981ceb479fc382016a0fdc2bc2756d9..57e6293c3860ae91fa308d67a20ba6aeeaff9ac0 100644
+--- a/core/rtw_mlme.c
++++ b/core/rtw_mlme.c
+@@ -20,11 +20,168 @@ extern void indicate_wx_scan_complete_event(_adapter *padapter);
+ extern u8 rtw_do_join(_adapter *padapter);
+ 
+ 
++static u32 rtw_assoc_timeout_remaining_ms(systime deadline)
++{
++	systime now = rtw_get_current_time();
++	u32 timeout_ms;
++
++	if (!rtw_time_before(now, deadline))
++		return 1;
++
++	timeout_ms = rtw_systime_to_ms(deadline - now);
++	return timeout_ms ? timeout_ms : 1;
++}
++
++void rtw_assoc_timeout_arm_locked(struct mlme_priv *pmlmepriv, u32 timeout_ms)
++{
++	struct rtw_assoc_timeout *timeout = &pmlmepriv->assoc_timeout;
++	systime deadline = rtw_get_current_time() + rtw_ms_to_systime(timeout_ms);
++
++	if (!timeout->initialized
++	    || timeout->state == RTW_ASSOC_TIMEOUT_SHUTDOWN) {
++		rtw_warn_on(1);
++		return;
++	}
++
++	if (timeout->state == RTW_ASSOC_TIMEOUT_DRAINING) {
++		timeout->pending = _TRUE;
++		timeout->pending_deadline = deadline;
++		return;
++	}
++
++	timeout->state = RTW_ASSOC_TIMEOUT_ARMED;
++	timeout->deadline = deadline;
++	timeout->pending = _FALSE;
++	_set_timer(&timeout->timer, timeout_ms);
++}
++
++void rtw_assoc_timeout_arm(struct mlme_priv *pmlmepriv, u32 timeout_ms)
++{
++	_irqL irqL;
++
++	_enter_critical_bh(&pmlmepriv->lock, &irqL);
++	rtw_assoc_timeout_arm_locked(pmlmepriv, timeout_ms);
++	_exit_critical_bh(&pmlmepriv->lock, &irqL);
++}
++
++u8 rtw_assoc_timeout_cancel_locked(struct mlme_priv *pmlmepriv)
++{
++	struct rtw_assoc_timeout *timeout = &pmlmepriv->assoc_timeout;
++	u8 removed = _FALSE;
++
++	if (!timeout->initialized)
++		return removed;
++
++	switch (timeout->state) {
++	case RTW_ASSOC_TIMEOUT_ARMED:
++		timeout->state = RTW_ASSOC_TIMEOUT_IDLE;
++		timeout->deadline = 0;
++		removed = _cancel_timer_nosync(&timeout->timer);
++		break;
++	case RTW_ASSOC_TIMEOUT_DRAINING:
++		/* The drain thread owns the timer; discard only a deferred arm. */
++		timeout->pending = _FALSE;
++		timeout->pending_deadline = 0;
++		break;
++	default:
++		break;
++	}
++
++	return removed;
++}
++
++void rtw_assoc_timeout_drain(struct mlme_priv *pmlmepriv)
++{
++	struct rtw_assoc_timeout *timeout = &pmlmepriv->assoc_timeout;
++	_irqL irqL;
++	u8 removed;
++
++	if (!timeout->initialized)
++		return;
++
++	_enter_critical_mutex_lock(&timeout->drain_mutex, NULL);
++	_enter_critical_bh(&pmlmepriv->lock, &irqL);
++	if (timeout->state == RTW_ASSOC_TIMEOUT_SHUTDOWN) {
++		_exit_critical_bh(&pmlmepriv->lock, &irqL);
++		_exit_critical_mutex(&timeout->drain_mutex, NULL);
++		return;
++	}
++	timeout->state = RTW_ASSOC_TIMEOUT_DRAINING;
++	timeout->deadline = 0;
++	timeout->pending = _FALSE;
++	timeout->pending_deadline = 0;
++	removed = _cancel_timer_nosync(&timeout->timer);
++	_exit_critical_bh(&pmlmepriv->lock, &irqL);
++
++	RTW_DBG("%s: pending before drain=%u\n", __func__, removed);
++	_cancel_timer_ex(&timeout->timer);
++
++	_enter_critical_bh(&pmlmepriv->lock, &irqL);
++	if (timeout->state == RTW_ASSOC_TIMEOUT_DRAINING) {
++		if (timeout->pending) {
++			timeout->deadline = timeout->pending_deadline;
++			timeout->pending = _FALSE;
++			timeout->pending_deadline = 0;
++			timeout->state = RTW_ASSOC_TIMEOUT_ARMED;
++			_set_timer(&timeout->timer,
++				rtw_assoc_timeout_remaining_ms(timeout->deadline));
++		} else {
++			timeout->state = RTW_ASSOC_TIMEOUT_IDLE;
++		}
++	}
++	_exit_critical_bh(&pmlmepriv->lock, &irqL);
++	_exit_critical_mutex(&timeout->drain_mutex, NULL);
++}
++
++void rtw_assoc_timeout_shutdown(struct mlme_priv *pmlmepriv)
++{
++	struct rtw_assoc_timeout *timeout = &pmlmepriv->assoc_timeout;
++	_irqL irqL;
++
++	if (!timeout->initialized)
++		return;
++
++	_enter_critical_mutex_lock(&timeout->drain_mutex, NULL);
++	_enter_critical_bh(&pmlmepriv->lock, &irqL);
++	timeout->state = RTW_ASSOC_TIMEOUT_SHUTDOWN;
++	timeout->deadline = 0;
++	timeout->pending = _FALSE;
++	timeout->pending_deadline = 0;
++	_exit_critical_bh(&pmlmepriv->lock, &irqL);
++
++	_shutdown_timer(&timeout->timer);
++	_exit_critical_mutex(&timeout->drain_mutex, NULL);
++}
++
++void rtw_assoc_timeout_deinit(struct mlme_priv *pmlmepriv)
++{
++	struct rtw_assoc_timeout *timeout = &pmlmepriv->assoc_timeout;
++
++	if (!timeout->initialized)
++		return;
++
++	rtw_assoc_timeout_shutdown(pmlmepriv);
++	_rtw_mutex_free(&timeout->drain_mutex);
++	timeout->initialized = _FALSE;
++}
++
+ void rtw_init_mlme_timer(_adapter *padapter)
+ {
+ 	struct	mlme_priv *pmlmepriv = &padapter->mlmepriv;
+ 
+-	rtw_init_timer(&(pmlmepriv->assoc_timer), padapter, rtw_join_timeout_handler, padapter);
++	if (pmlmepriv->assoc_timeout.initialized) {
++		rtw_warn_on(1);
++		return;
++	}
++
++	pmlmepriv->assoc_timeout.state = RTW_ASSOC_TIMEOUT_IDLE;
++	pmlmepriv->assoc_timeout.deadline = 0;
++	pmlmepriv->assoc_timeout.pending_deadline = 0;
++	pmlmepriv->assoc_timeout.pending = _FALSE;
++	_rtw_mutex_init(&pmlmepriv->assoc_timeout.drain_mutex);
++	rtw_init_timer(&pmlmepriv->assoc_timeout.timer, padapter,
++		rtw_join_timeout_handler, padapter);
++	pmlmepriv->assoc_timeout.initialized = _TRUE;
+ 	rtw_init_timer(&(pmlmepriv->scan_to_timer), padapter, rtw_scan_timeout_handler, padapter);
+ 
+ #ifdef CONFIG_SET_SCAN_DENY_TIMER
+@@ -302,6 +459,8 @@ void _rtw_free_mlme_priv(struct mlme_priv *pmlmepriv)
+ 		rtw_warn_on(1);
+ 		goto exit;
+ 	}
++	rtw_assoc_timeout_deinit(pmlmepriv);
++
+ 	rtw_free_mlme_priv_ie_data(pmlmepriv);
+ 
+ 	if (pmlmepriv) {
+@@ -1321,7 +1480,7 @@ void rtw_surveydone_event_callback(_adapter	*adapter, u8 *pbuf)
+ 				set_fwstate(pmlmepriv, _FW_UNDER_LINKING);
+ 
+ 				if (rtw_select_and_join_from_scanned_queue(pmlmepriv) == _SUCCESS)
+-					_set_timer(&pmlmepriv->assoc_timer, MAX_JOIN_TIMEOUT);
++					rtw_assoc_timeout_arm_locked(pmlmepriv, MAX_JOIN_TIMEOUT);
+ 				else {
+ 					WLAN_BSSID_EX    *pdev_network = &(adapter->registrypriv.dev_network);
+ 					u8 *pibss = adapter->registrypriv.dev_network.MacAddress;
+@@ -1351,7 +1510,7 @@ void rtw_surveydone_event_callback(_adapter	*adapter, u8 *pbuf)
+ 			pmlmepriv->to_join = _FALSE;
+ 			s_ret = rtw_select_and_join_from_scanned_queue(pmlmepriv);
+ 			if (_SUCCESS == s_ret)
+-				_set_timer(&pmlmepriv->assoc_timer, MAX_JOIN_TIMEOUT);
++				rtw_assoc_timeout_arm_locked(pmlmepriv, MAX_JOIN_TIMEOUT);
+ 			else if (s_ret == 2) { /* there is no need to wait for join */
+ 				_clr_fwstate_(pmlmepriv, _FW_UNDER_LINKING);
+ 				rtw_indicate_connect(adapter);
+@@ -2166,6 +2325,7 @@ static void rtw_joinbss_update_network(_adapter *padapter, struct wlan_network *
+ /* #define REJOIN */
+ void rtw_joinbss_event_prehandle(_adapter *adapter, u8 *pbuf, u16 status)
+ {
++	u8 assoc_timer_removed = _FALSE;
+ 	_irqL irqL;
+ 	static u8 retry = 0;
+ 	struct sta_info *ptarget_sta = NULL, *pcur_sta = NULL;
+@@ -2255,8 +2415,9 @@ void rtw_joinbss_event_prehandle(_adapter *adapter, u8 *pbuf, u16 status)
+ 				rtw_indicate_connect(adapter);
+ 			}
+ 
+-			/* s5. Cancle assoc_timer					 */
+-			_cancel_timer_ex(&pmlmepriv->assoc_timer);
++			/* This path can run in timer/RX softirq context. */
++			assoc_timer_removed =
++				rtw_assoc_timeout_cancel_locked(pmlmepriv);
+ 
+ 
+ 		} else {
+@@ -2269,7 +2430,7 @@ void rtw_joinbss_event_prehandle(_adapter *adapter, u8 *pbuf, u16 status)
+ 	} else if (pnetwork->join_res == -4) {
+ 		rtw_reset_securitypriv(adapter);
+ 		pmlmepriv->join_status = status;
+-		_set_timer(&pmlmepriv->assoc_timer, 1);
++		rtw_assoc_timeout_arm_locked(pmlmepriv, 1);
+ 
+ 		/* rtw_free_assoc_resources(adapter, _TRUE); */
+ 
+@@ -2287,7 +2448,7 @@ void rtw_joinbss_event_prehandle(_adapter *adapter, u8 *pbuf, u16 status)
+ 
+ 		if (res == _SUCCESS) {
+ 			/* extend time of assoc_timer */
+-			_set_timer(&pmlmepriv->assoc_timer, MAX_JOIN_TIMEOUT);
++			rtw_assoc_timeout_arm_locked(pmlmepriv, MAX_JOIN_TIMEOUT);
+ 			retry++;
+ 		} else if (res == 2) { /* there is no need to wait for join */
+ 			_clr_fwstate_(pmlmepriv, _FW_UNDER_LINKING);
+@@ -2295,7 +2456,7 @@ void rtw_joinbss_event_prehandle(_adapter *adapter, u8 *pbuf, u16 status)
+ 		} else {
+ #endif
+ 			pmlmepriv->join_status = status;
+-			_set_timer(&pmlmepriv->assoc_timer, 1);
++			rtw_assoc_timeout_arm_locked(pmlmepriv, 1);
+ 			/* rtw_free_assoc_resources(adapter, _TRUE); */
+ 			_clr_fwstate_(pmlmepriv, _FW_UNDER_LINKING);
+ 
+@@ -2309,6 +2470,9 @@ ignore_joinbss_callback:
+ 	_exit_critical_bh(&pmlmepriv->lock, &irqL);
+ 
+ exit:
++	if (assoc_timer_removed)
++		RTW_DBG("%s: removed pending assoc timer\n", __func__);
++
+ 	return;
+ }
+ 
+@@ -2992,6 +3156,9 @@ void rtw_join_timeout_handler(void *ctx)
+ {
+ 	_adapter *adapter = (_adapter *)ctx;
+ 	_irqL irqL;
++	systime now;
++	u32 remaining_ms;
++	struct rtw_assoc_timeout *timeout;
+ 	struct	mlme_priv *pmlmepriv = &adapter->mlmepriv;
+ 
+ #if 0
+@@ -3011,6 +3178,24 @@ void rtw_join_timeout_handler(void *ctx)
+ 
+ 	_enter_critical_bh(&pmlmepriv->lock, &irqL);
+ 
++	timeout = &pmlmepriv->assoc_timeout;
++	if (timeout->state != RTW_ASSOC_TIMEOUT_ARMED) {
++		_exit_critical_bh(&pmlmepriv->lock, &irqL);
++		return;
++	}
++
++	now = rtw_get_current_time();
++	if (rtw_time_before(now, timeout->deadline)) {
++		remaining_ms = rtw_assoc_timeout_remaining_ms(timeout->deadline);
++		_set_timer(&timeout->timer, remaining_ms);
++		_exit_critical_bh(&pmlmepriv->lock, &irqL);
++		return;
++	}
++
++	/* Consume the current deadline before changing MLME state. */
++	timeout->state = RTW_ASSOC_TIMEOUT_IDLE;
++	timeout->deadline = 0;
++
+ #ifdef CONFIG_LAYER2_ROAMING
+ 	if (rtw_to_roam(adapter) > 0) { /* join timeout caused by roaming */
+ 		while (1) {
+diff --git a/core/rtw_mlme_ext.c b/core/rtw_mlme_ext.c
+index ff4934d9ac16c18ffc8b80da70781a8cdf7567fd..0c6e8b53cb6549f62e132a37c331bfb44a0e47f1 100644
+--- a/core/rtw_mlme_ext.c
++++ b/core/rtw_mlme_ext.c
+@@ -11301,7 +11301,7 @@ void start_clnt_join(_adapter *padapter)
+ 		/* and enable a timer */
+ 		beacon_timeout = decide_wait_for_beacon_timeout(pmlmeinfo->bcn_interval);
+ 		set_link_timer(pmlmeext, beacon_timeout);
+-		_set_timer(&padapter->mlmepriv.assoc_timer,
++		rtw_assoc_timeout_arm(&padapter->mlmepriv,
+ 			(REAUTH_TO * REAUTH_LIMIT) + (REASSOC_TO * REASSOC_LIMIT) + beacon_timeout);
+ 
+ #ifdef CONFIG_RTW_80211R
+diff --git a/core/rtw_rson.c b/core/rtw_rson.c
+index 39b583a6496e40a255d75eead36e7bd16686dd0a..1e50f4b227b4e358ef9202b2cdd4c97a6a8d0442 100644
+--- a/core/rtw_rson.c
++++ b/core/rtw_rson.c
+@@ -539,7 +539,7 @@ void rtw_rson_scan_cmd_hdl(_adapter *padapter, int op)
+ 				pmlmepriv->to_join = _FALSE;
+ 				s_ret = rtw_select_and_join_from_scanned_queue(pmlmepriv);
+ 				if (s_ret == _SUCCESS)
+-					_set_timer(&pmlmepriv->assoc_timer, MAX_JOIN_TIMEOUT);
++					rtw_assoc_timeout_arm(pmlmepriv, MAX_JOIN_TIMEOUT);
+ 				else if (s_ret == 2) {
+ 					_clr_fwstate_(pmlmepriv, _FW_UNDER_LINKING);
+ 					rtw_indicate_connect(padapter);
+diff --git a/include/osdep_service_linux.h b/include/osdep_service_linux.h
+index 25eaae5401e2a3258692346a5af4d26e7f7f60a6..6f277cc71b178a104b2e1bb1d59e2b94d0f125bb 100644
+--- a/include/osdep_service_linux.h
++++ b/include/osdep_service_linux.h
+@@ -417,6 +417,26 @@ __inline static void _cancel_timer(_timer *ptimer, u8 *bcancelled)
+ #endif
+ }
+ 
++__inline static u8 _cancel_timer_nosync(_timer *ptimer)
++{
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 15, 0))
++	return timer_delete(&ptimer->timer) == 1;
++#else
++	return del_timer(&ptimer->timer) == 1;
++#endif
++}
++
++__inline static void _shutdown_timer(_timer *ptimer)
++{
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 2, 0))
++	timer_shutdown_sync(&ptimer->timer);
++#else
++	u8 cancelled;
++
++	_cancel_timer(ptimer, &cancelled);
++#endif
++}
++
+ #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 20))
+ #define _init_workitem(pwork, pfunc, cntx) \
+ 	do { \
+diff --git a/include/rtw_mlme.h b/include/rtw_mlme.h
+index 8fef7befa8be169864e06bf64d691ea1dfaef577..b824b0e82449e9bcdf19b6e28c5506a057b81b74 100644
+--- a/include/rtw_mlme.h
++++ b/include/rtw_mlme.h
+@@ -748,6 +748,24 @@ struct roam_nb_info {
+ #endif	/* defined(CONFIG_RTW_WNM) || defined(CONFIG_RTW_80211K) */
+ #endif
+ 
++enum rtw_assoc_timeout_state {
++	RTW_ASSOC_TIMEOUT_IDLE,
++	RTW_ASSOC_TIMEOUT_ARMED,
++	RTW_ASSOC_TIMEOUT_DRAINING,
++	RTW_ASSOC_TIMEOUT_SHUTDOWN,
++};
++
++struct rtw_assoc_timeout {
++	_timer timer;
++	_mutex drain_mutex;
++	systime deadline;
++	systime pending_deadline;
++	u8 state;
++	u8 pending;
++	u8 initialized;
++};
++
++
+ struct mlme_priv {
+ 
+ 	_lock	lock;
+@@ -800,7 +818,7 @@ struct mlme_priv {
+ 
+ 	u32	auto_scan_int_ms;
+ 
+-	_timer assoc_timer;
++	struct rtw_assoc_timeout assoc_timeout;
+ 
+ 	uint assoc_by_bssid;
+ 	uint assoc_by_rssi;
+@@ -1189,6 +1207,12 @@ extern void rtw_update_registrypriv_dev_network(_adapter *adapter);
+ extern void rtw_get_encrypt_decrypt_from_registrypriv(_adapter *adapter);
+ 
+ extern void rtw_join_timeout_handler(void *ctx);
++extern void rtw_assoc_timeout_arm(struct mlme_priv *pmlmepriv, u32 timeout_ms);
++extern void rtw_assoc_timeout_arm_locked(struct mlme_priv *pmlmepriv, u32 timeout_ms);
++extern u8 rtw_assoc_timeout_cancel_locked(struct mlme_priv *pmlmepriv);
++extern void rtw_assoc_timeout_drain(struct mlme_priv *pmlmepriv);
++extern void rtw_assoc_timeout_shutdown(struct mlme_priv *pmlmepriv);
++extern void rtw_assoc_timeout_deinit(struct mlme_priv *pmlmepriv);
+ extern void rtw_scan_timeout_handler(void *ctx);
+ 
+ extern void rtw_dynamic_check_timer_handlder(void *ctx);
+diff --git a/os_dep/linux/os_intfs.c b/os_dep/linux/os_intfs.c
+index 3900b9bc56196c60ab5cf1d4d9fa8a40e124d613..582841525d63b98c92e79b9d30cb0b35e27daf03 100644
+--- a/os_dep/linux/os_intfs.c
++++ b/os_dep/linux/os_intfs.c
+@@ -2799,6 +2799,9 @@ exit:
+ 
+ 
+ 
++	if (ret8 != _SUCCESS)
++		rtw_assoc_timeout_deinit(&padapter->mlmepriv);
++
+ 	return ret8;
+ 
+ }
+@@ -2813,7 +2816,7 @@ void rtw_cancel_dynamic_chk_timer(_adapter *padapter)
+ void rtw_cancel_all_timer(_adapter *padapter)
+ {
+ 
+-	_cancel_timer_ex(&padapter->mlmepriv.assoc_timer);
++	rtw_assoc_timeout_drain(&padapter->mlmepriv);
+ 
+ 	_cancel_timer_ex(&padapter->mlmepriv.scan_to_timer);
+ 
+@@ -3136,6 +3139,9 @@ _adapter *rtw_drv_add_vir_if(_adapter *primary_padapter,
+ 
+ 	_rtw_memcpy(padapter, primary_padapter, sizeof(_adapter));
+ 
++	/* The copied synchronization objects do not belong to this adapter. */
++	padapter->mlmepriv.assoc_timeout.initialized = _FALSE;
++
+ 	/*  */
+ 	padapter->bup = _FALSE;
+ 	padapter->net_closed = _TRUE;
