@@ -1,0 +1,211 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+tag=k1plus-netmode
+state_dir=/tmp/k1plus-net
+dhcp_pid=
+fallback_pid=/var/run/k1plus-fallback-dhcp.pid
+mode=BOOT
+
+log() {
+	logger -t "$tag" "$*"
+}
+
+load_settings() {
+	config_load k1plus_network
+	config_get hostname main hostname
+	config_get dhcp_timeout main dhcp_timeout
+	config_get probe_interval main probe_interval
+	config_get link_poll_interval main link_poll_interval
+	config_get fallback_ip main fallback_ip
+	config_get fallback_prefix main fallback_prefix
+	config_get fallback_netmask main fallback_netmask
+	config_get pool_start main fallback_pool_start
+	config_get pool_end main fallback_pool_end
+	config_get fallback_lease main fallback_lease
+	for value in "$hostname" "$fallback_ip" "$fallback_netmask" "$pool_start" "$pool_end" "$fallback_lease"; do
+		[ -n "$value" ] || { log 'missing network-mode configuration'; exit 1; }
+	done
+	for value in "$dhcp_timeout" "$probe_interval" "$link_poll_interval" "$fallback_prefix"; do
+		case "$value" in ''|*[!0-9]*) log 'invalid numeric configuration'; exit 1;; esac
+	done
+}
+
+set_mode() {
+	[ "$mode" = "$1" ] && return
+	log "$mode -> $1${2:+: $2}"
+	mode=$1
+}
+
+carrier() {
+	[ "$(cat /sys/class/net/eth0/carrier 2>/dev/null)" = 1 ]
+}
+
+bridge_ready() {
+	ip link show dev br-lan >/dev/null 2>&1
+}
+
+stop_dhcp_client() {
+	[ -n "$dhcp_pid" ] || return 0
+	kill "$dhcp_pid" 2>/dev/null || true
+	wait "$dhcp_pid" 2>/dev/null || true
+	dhcp_pid=
+	rm -f /var/run/k1plus-udhcpc.pid
+}
+
+start_dhcp_client() {
+	stop_dhcp_client
+	rm -f "$state_dir/bound"
+	udhcpc -f -i br-lan -p /var/run/k1plus-udhcpc.pid \
+		-s /usr/libexec/k1plus-dhcp-event -t 3 -T 3 -A 3 \
+		-x "hostname:$hostname" >/dev/null 2>&1 &
+	dhcp_pid=$!
+}
+
+stop_fallback_dhcp() {
+	if [ -s "$fallback_pid" ]; then
+		pid=$(cat "$fallback_pid")
+		kill "$pid" 2>/dev/null || true
+		wait "$pid" 2>/dev/null || true
+	fi
+	rm -f "$fallback_pid"
+}
+
+clear_ipv4() {
+	ip -4 route del default dev br-lan 2>/dev/null || true
+	ip -4 addr flush dev br-lan scope global 2>/dev/null || true
+	rm -f "$state_dir/ip" "$state_dir/expires" "$state_dir/bound" /tmp/current-ip
+}
+
+dad_clear() {
+	arping -D -I br-lan -c 3 -w 3 "$fallback_ip" >/dev/null 2>&1
+}
+
+start_fallback_dhcp() {
+	stop_fallback_dhcp
+	dnsmasq --port=0 --interface=br-lan --bind-dynamic \
+		--dhcp-range="$pool_start,$pool_end,$fallback_netmask,$fallback_lease" \
+		--dhcp-option="3,$fallback_ip" --pid-file="$fallback_pid"
+}
+
+enter_mode_b() {
+	stop_dhcp_client
+	stop_fallback_dhcp
+	clear_ipv4
+	if ! dad_clear; then
+		set_mode MODE_B_BLOCKED "duplicate address $fallback_ip"
+		log "MODE_B conflict: $fallback_ip is already in use; DHCP server remains off"
+		return 1
+	fi
+	ip -4 addr add "$fallback_ip/$fallback_prefix" dev br-lan || return 1
+	printf '%s\n' "$fallback_ip" > /tmp/current-ip
+	if ! start_fallback_dhcp; then
+		clear_ipv4
+		set_mode MODE_B_BLOCKED 'fallback DHCP start failed'
+		return 1
+	fi
+	set_mode MODE_B "$fallback_ip/$fallback_prefix; DHCP $pool_start-$pool_end"
+	return 0
+}
+
+probe_upstream() {
+	stop_fallback_dhcp
+	if udhcpc -n -q -i br-lan -s /bin/true -t 1 -T 3 -A 1 \
+		-x "hostname:$hostname" >/dev/null 2>&1; then
+		log 'upstream DHCP detected with fallback DHCP disabled'
+		return 0
+	fi
+	return 1
+}
+
+try_dhcp() {
+	set_mode TRY_DHCP "timeout ${dhcp_timeout}s"
+	stop_fallback_dhcp
+	clear_ipv4
+	start_dhcp_client
+	deadline=$(( $(date +%s) + dhcp_timeout ))
+	while [ "$(date +%s)" -lt "$deadline" ]; do
+		if [ -s "$state_dir/bound" ]; then
+			set_mode MODE_A "$(cat "$state_dir/ip")"
+			return 0
+		fi
+		sleep 1
+	done
+	log 'upstream DHCP timed out'
+	return 1
+}
+
+mode_a_loop() {
+	while :; do
+		now=$(date +%s)
+		expires=$(cat "$state_dir/expires" 2>/dev/null || echo 0)
+		case "$expires" in ''|*[!0-9]*) expires=0;; esac
+		if [ "$expires" -le "$now" ]; then
+			log 'MODE_A lease expired; returning to discovery'
+			stop_dhcp_client
+			clear_ipv4
+			return
+		fi
+		if [ -n "$dhcp_pid" ] && ! kill -0 "$dhcp_pid" 2>/dev/null; then
+			log 'DHCP client exited before lease expiry; restarting while retaining address'
+			start_dhcp_client
+		fi
+		sleep "$link_poll_interval"
+	done
+}
+
+mode_b_loop() {
+	last_carrier=0
+	carrier && last_carrier=1
+	next_probe=$(( $(date +%s) + probe_interval ))
+	while :; do
+		now=$(date +%s)
+		current_carrier=0
+		carrier && current_carrier=1
+		if [ "$current_carrier" -eq 1 ] && [ "$last_carrier" -eq 0 ]; then
+			log 'eth0 link restored; probing upstream DHCP immediately'
+			next_probe=$now
+		fi
+		last_carrier=$current_carrier
+		if [ "$now" -ge "$next_probe" ]; then
+			if probe_upstream; then
+				clear_ipv4
+				return 0
+			fi
+			enter_mode_b || true
+			next_probe=$((now + probe_interval))
+		fi
+		sleep "$link_poll_interval"
+	done
+}
+
+cleanup() {
+	stop_dhcp_client
+	stop_fallback_dhcp
+}
+trap cleanup EXIT INT TERM
+
+load_settings
+mkdir -p "$state_dir"
+set_mode BOOT 'waiting for br-lan and eth0 link'
+boot_deadline=$(( $(date +%s) + dhcp_timeout ))
+while ! bridge_ready; do
+	[ "$(date +%s)" -ge "$boot_deadline" ] && break
+	sleep 1
+done
+bridge_ready || { log 'br-lan did not appear'; exit 1; }
+if carrier; then
+	log 'BOOT eth0 link detected'
+else
+	log "BOOT eth0 link absent; DHCP discovery continues within the ${dhcp_timeout}-second fallback window"
+fi
+
+while :; do
+	if try_dhcp; then
+		mode_a_loop
+	else
+		enter_mode_b || true
+		mode_b_loop
+	fi
+done

@@ -19,6 +19,7 @@ jobs:
           - wifi_compat
           - wifi_compat_v2
           - wifi_compat_v3
+          - wifi_release_v1
           - rtl8189es_inert
     env:
       SOURCE_REF: 4cafb73e88b6cf61cfeca2ee6cf8ecabb60f7a07
@@ -69,6 +70,10 @@ jobs:
             "configs/NanoPi_K1_Plus_${{ matrix.profile }}.config" \
             "$source_dir/.config" \
             "$out_dir"
+
+      - name: Validate Wi-Fi release overlay
+        if: matrix.profile == 'wifi_release_v1'
+        run: ./scripts/validate-wifi-release-v1.sh overlays/wifi_release_v1/files
 
       - name: Upload validation artifact
         if: always()

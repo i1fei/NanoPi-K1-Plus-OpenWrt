@@ -36,6 +36,11 @@ case "$PROFILE" in
 		PROFILE_LABEL=WIFI_COMPAT_V3
 		PROFILE_VALIDATION_FILE="$ARTIFACT_DIR/wifi-compat-v3-profile-manifest-validation.txt"
 		;;
+	wifi_release_v1)
+		PROFILE_KEY=wifi_release_v1
+		PROFILE_LABEL=WIFI_RELEASE_V1
+		PROFILE_VALIDATION_FILE="$ARTIFACT_DIR/wifi-release-v1-profile-manifest-validation.txt"
+		;;
 	rtl8189es_inert)
 		PROFILE_KEY=rtl8189es_inert
 		PROFILE_LABEL=RTL8189ES_INERT
@@ -139,6 +144,51 @@ require_rtl8189es_artifacts() {
 	[ "$VALIDATION_FAILURES" -ne "$before" ] || record_full "RTL8189ES_AUTOLOAD=PASS"
 }
 
+verify_requested_manifest_packages() {
+	requested_config=$1
+	before=$VALIDATION_FAILURES
+	if [ ! -f "$requested_config" ]; then
+		fail_full "REQUESTED_PACKAGE_CONFIG"
+		return
+	fi
+	packages=$(awk -F= '/^CONFIG_PACKAGE_.*=y$/ { sub(/^CONFIG_PACKAGE_/, "", $1); print $1 }' "$requested_config")
+	for pkg in $packages; do
+		require_manifest_pkg "$pkg" "REQUESTED_PACKAGE_$pkg"
+	done
+	[ "$VALIDATION_FAILURES" -ne "$before" ] || record_full "REQUESTED_PACKAGES_FROM_PROFILE=PASS"
+}
+
+verify_rtl8189es_compile_warnings() {
+	before=$VALIDATION_FAILURES
+	baseline_warning_count=581
+	require_file "$ARTIFACT_DIR/rtl8189es-compile.status" "RTL8189ES_COMPILE_STATUS"
+	require_file "$ARTIFACT_DIR/rtl8189es-compile-warnings.txt" "RTL8189ES_COMPILE_WARNINGS"
+	if [ -f "$ARTIFACT_DIR/rtl8189es-compile.status" ] &&
+		grep -qx 'clean=0' "$ARTIFACT_DIR/rtl8189es-compile.status" &&
+		grep -qx 'compile=0' "$ARTIFACT_DIR/rtl8189es-compile.status"; then
+		record_full "RTL8189ES_CLEAN_REBUILD=PASS"
+	else
+		fail_full "RTL8189ES_CLEAN_REBUILD"
+	fi
+	if [ -f "$ARTIFACT_DIR/rtl8189es-compile-warnings.txt" ]; then
+		warning_count=$(wc -l < "$ARTIFACT_DIR/rtl8189es-compile-warnings.txt" | tr -d '[:space:]')
+		record_full "RTL8189ES_WARNING_COUNT=$warning_count"
+		if [ "$warning_count" -le "$baseline_warning_count" ]; then
+			record_full "RTL8189ES_WARNING_COUNT_WITHIN_RUN93_BASELINE=PASS"
+		else
+			fail_full "RTL8189ES_NEW_WARNINGS"
+		fi
+		if grep -Eqi 'implicit declaration' "$ARTIFACT_DIR/rtl8189es-compile-warnings.txt"; then
+			fail_full "RTL8189ES_IMPLICIT_DECLARATION"
+		else
+			record_full "RTL8189ES_IMPLICIT_DECLARATION=ABSENT"
+		fi
+	else
+		fail_full "RTL8189ES_NEW_WARNINGS"
+	fi
+	[ "$VALIDATION_FAILURES" -ne "$before" ] || record_full "RTL8189ES_COMPILE_GATE=PASS"
+}
+
 verify_rtl8189es_image_module() {
 	image="$ARTIFACT_DIR/NanoPi-K1-Plus-sunxi-cortexa53.img.gz"
 	previous_image_sha=4ab509b0a6106abc17404bc00079c6e50d22ce47feb14900db7c9df1ef620f10
@@ -186,8 +236,26 @@ verify_rtl8189es_image_module() {
 		trap - 0 1 2 15
 		return
 	fi
+	if [ "$PROFILE_KEY" = wifi_release_v1 ]; then
+		set -- \
+			'lib/modules/*/rtl8189es.ko' \
+			'etc/config/dhcp' \
+			'etc/config/k1plus_network' \
+			'etc/config/k1plus_watchdog' \
+			'etc/config/wireless' \
+			'etc/init.d/k1plus-hw-watchdog' \
+			'etc/init.d/k1plus-network' \
+			'etc/init.d/k1plus-wifi-watchdog' \
+			'etc/profile.d/99-k1-plus-wifi.sh' \
+			'etc/uci-defaults/99-k1-plus-wifi-release-v1' \
+			'usr/libexec/k1plus-dhcp-event' \
+			'usr/sbin/k1plus-network-mode' \
+			'usr/sbin/k1plus-wifi-watchdog'
+	else
+		set -- 'lib/modules/*/rtl8189es.ko'
+	fi
 	if ! "$unsquashfs" -no-progress -d "$image_work/rootfs" \
-		"$image_work/rootfs.squashfs" 'lib/modules/*/rtl8189es.ko' >/dev/null; then
+		"$image_work/rootfs.squashfs" "$@" >/dev/null; then
 		fail_full "ROOTFS_SQUASHFS_EXTRACT"
 		rm -rf "$image_work"
 		trap - 0 1 2 15
@@ -206,6 +274,11 @@ verify_rtl8189es_image_module() {
 	module=$(sed -n '1p' "$module_list")
 	cp "$module" "$ARTIFACT_DIR/rtl8189es.image.ko"
 	sha256sum "$ARTIFACT_DIR/rtl8189es.image.ko" > "$ARTIFACT_DIR/rtl8189es.image.sha256"
+	if cmp -s "$ARTIFACT_DIR/rtl8189es.ko" "$ARTIFACT_DIR/rtl8189es.image.ko"; then
+		record_full "FINAL_IMAGE_RTL8189ES_MATCHES_REBUILD=PASS"
+	else
+		fail_full "FINAL_IMAGE_RTL8189ES_MATCHES_REBUILD"
+	fi
 	if ! readelf -Ws "$ARTIFACT_DIR/rtl8189es.image.ko" > "$ARTIFACT_DIR/rtl8189es.image.symbols.txt"; then
 		fail_full "FINAL_IMAGE_RTL8189ES_READELF"
 		rm -rf "$image_work"
@@ -236,6 +309,18 @@ verify_rtl8189es_image_module() {
 	else
 		fail_full "FINAL_IMAGE_CFG80211_REGISTER_NETDEVICE"
 	fi
+	for symbol in rtw_assoc_timeout_drain rtw_assoc_timeout_deinit rtw_assoc_timeout_shutdown; do
+		if awk -v symbol="$symbol" '$8 == symbol && $7 != "UND" { found = 1 } END { exit !found }' "$symbols"; then
+			record_full "FINAL_IMAGE_020_${symbol}=PASS"
+		else
+			fail_full "FINAL_IMAGE_020_${symbol}"
+		fi
+	done
+	if awk '$8 == "timer_shutdown_sync" && $7 == "UND" { found = 1 } END { exit !found }' "$symbols"; then
+		record_full "FINAL_IMAGE_TIMER_SHUTDOWN_SYNC=PASS"
+	else
+		fail_full "FINAL_IMAGE_TIMER_SHUTDOWN_SYNC"
+	fi
 	if awk '$8 == "_rtw_mutex_init" || $8 == "rtw_mutex_init" { found = 1 } END { exit !found }' "$symbols"; then
 		fail_full "FINAL_IMAGE_RTW_MUTEX_INIT_WRAPPER_ABSENT"
 	else
@@ -243,7 +328,7 @@ verify_rtl8189es_image_module() {
 	fi
 	mutex_init_relocations=$(awk '$0 ~ /[[:space:]]__mutex_init([[:space:]]|$)/ { count++ } END { print count + 0 }' "$relocations")
 	record_full "FINAL_IMAGE_MUTEX_INIT_RELOCATIONS=$mutex_init_relocations"
-	if [ "$mutex_init_relocations" -gt 1 ]; then
+	if [ "$mutex_init_relocations" -ge 13 ]; then
 		record_full "FINAL_IMAGE_MUTEX_INIT_CALL_SITES=PASS"
 	else
 		fail_full "FINAL_IMAGE_MUTEX_INIT_CALL_SITES"
@@ -266,6 +351,15 @@ verify_rtl8189es_image_module() {
 		record_full "FINAL_IMAGE_TIMER_INIT_CALL_SITES=PASS"
 	else
 		fail_full "FINAL_IMAGE_TIMER_INIT_CALL_SITES"
+	fi
+
+	if [ "$PROFILE_KEY" = wifi_release_v1 ]; then
+		if ./scripts/validate-wifi-release-v1.sh "$image_work/rootfs" > "$ARTIFACT_DIR/wifi-release-v1-rootfs-validation.txt"; then
+			record_full "FINAL_IMAGE_WIFI_RELEASE_POLICY=PASS"
+		else
+			cat "$ARTIFACT_DIR/wifi-release-v1-rootfs-validation.txt" >&2
+			fail_full "FINAL_IMAGE_WIFI_RELEASE_POLICY"
+		fi
 	fi
 
 	rm -rf "$image_work"
@@ -635,6 +729,43 @@ verify_wifi_compat_v2_profile() {
 	fi
 }
 
+verify_wifi_release_v1_profile() {
+	profile_before=$VALIDATION_FAILURES
+	record_profile_header
+	require_openwrt_config_line 'CONFIG_TARGET_ROOTFS_PARTSIZE=1024' "ROOTFS_PARTSIZE"
+	verify_requested_manifest_packages "configs/NanoPi_K1_Plus_wifi_release_v1.config"
+	require_rtl8189es_artifacts
+	verify_rtl8189es_compile_warnings
+
+	for symbol in PROVE_LOCKING LOCKDEP DEBUG_LOCK_ALLOC DEBUG_MUTEXES DEBUG_SPINLOCK; do
+		require_kernel_config_line "# CONFIG_${symbol} is not set" "KERNEL_CONFIG_${symbol}_DISABLED"
+	done
+	require_openwrt_config_line '# CONFIG_KERNEL_PROVE_LOCKING is not set' "OPENWRT_CONFIG_KERNEL_PROVE_LOCKING_DISABLED"
+
+	for file in \
+		k1-plus-wifi-release-v1-policy \
+		k1plus-network-mode \
+		k1plus-wifi-watchdog \
+		k1plus-network-config \
+		k1plus-watchdog-config \
+		k1-plus-wireless-config \
+		VERSION.txt; do
+		require_file "$ARTIFACT_DIR/$file" "WIFI_RELEASE_ARTIFACT_$file"
+	done
+	require_grep "$ARTIFACT_DIR/VERSION.txt" '^STATUS=UNVERIFIED$' "WIFI_RELEASE_UNVERIFIED"
+	require_grep "$ARTIFACT_DIR/k1-plus-wireless-config" "^[[:space:]]*option network 'lan'$" "WIRELESS_CONFIG_NETWORK_LAN"
+	require_grep "$ARTIFACT_DIR/k1plus-network-config" "^[[:space:]]*option dhcp_timeout '90'$" "NETWORK_MODE_TIMEOUT"
+	require_grep "$ARTIFACT_DIR/k1plus-network-config" "^[[:space:]]*option probe_interval '30'$" "NETWORK_MODE_PROBE_INTERVAL"
+	require_grep "$ARTIFACT_DIR/k1plus-watchdog-config" "^[[:space:]]*option timeout '30'$" "HARDWARE_WATCHDOG_TIMEOUT"
+
+	verify_rtl8189es_image_module
+	if [ "$VALIDATION_FAILURES" -eq "$profile_before" ]; then
+		record_full "WIFI_RELEASE_V1_PROFILE_VERIFY=PASS"
+	else
+		record_full "WIFI_RELEASE_V1_PROFILE_VERIFY=FAIL"
+	fi
+}
+
 verify_rtl8189es_inert_profile() {
 	record_profile_header
 	require_openwrt_config_line 'CONFIG_TARGET_ROOTFS_PARTSIZE=4096' "ROOTFS_PARTSIZE"
@@ -853,7 +984,7 @@ if [ -n "$manifest" ]; then
 	require_grep "$manifest" '^kmod-usb-hid([[:space:]]|$)' "MANIFEST_KMOD_USB_HID"
 fi
 
-if [ "$PROFILE_KEY" = wifi_compat_v3 ]; then
+if [ "$PROFILE_KEY" = wifi_compat_v3 ] || [ "$PROFILE_KEY" = wifi_release_v1 ]; then
 	COLLECT_ALL=1
 fi
 case "$PROFILE_KEY" in
@@ -861,6 +992,7 @@ case "$PROFILE_KEY" in
 	full) verify_full_profile ;;
 	wifi_compat) verify_wifi_compat_profile ;;
 	wifi_compat_v2|wifi_compat_v3) verify_wifi_compat_v2_profile ;;
+	wifi_release_v1) verify_wifi_release_v1_profile ;;
 	rtl8189es_inert) verify_rtl8189es_inert_profile ;;
 	buddha) verify_buddha_profile ;;
 esac

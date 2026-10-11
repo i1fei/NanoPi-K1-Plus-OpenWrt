@@ -1,0 +1,94 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+tag=k1plus-wifi-watchdog
+failures=0
+stage=0
+
+config_load k1plus_watchdog
+config_get interval wifi interval
+config_get threshold wifi failure_threshold
+config_get command_timeout wifi command_timeout
+for value in "$interval" "$threshold" "$command_timeout"; do
+	case "$value" in ''|*[!0-9]*) logger -t "$tag" 'invalid watchdog configuration'; exit 1;; esac
+done
+
+healthy() {
+	pidof hostapd >/dev/null 2>&1 || return 1
+	iw dev wlan0 info 2>/dev/null | grep -q '^[[:space:]]*type AP$'
+}
+
+run_bounded() {
+	"$@" &
+	pid=$!
+	elapsed=0
+	while kill -0 "$pid" 2>/dev/null; do
+		if [ "$elapsed" -ge "$command_timeout" ]; then
+			logger -t "$tag" "command timed out after ${command_timeout}s: $*"
+			return 124
+		fi
+		sleep 1
+		elapsed=$((elapsed + 1))
+	done
+	wait "$pid"
+}
+
+reboot_after_timeout() {
+	logger -t "$tag" 'recovery command is still blocked; rebooting and relying on the hardware watchdog if shutdown stalls'
+	sync
+	reboot
+	exit 0
+}
+
+reload_driver() {
+	run_bounded wifi down
+	result=$?
+	[ "$result" -eq 0 ] || return "$result"
+	run_bounded rmmod rtl8189es
+	result=$?
+	[ "$result" -eq 0 ] || return "$result"
+	run_bounded modprobe rtl8189es
+	result=$?
+	[ "$result" -eq 0 ] || return "$result"
+	run_bounded wifi up
+}
+
+while :; do
+	sleep "$interval"
+	if healthy; then
+		[ "$failures" -eq 0 ] || logger -t "$tag" 'health recovered'
+		failures=0
+		stage=0
+		continue
+	fi
+
+	failures=$((failures + 1))
+	logger -t "$tag" "health failure $failures/$threshold at recovery stage $stage"
+	[ "$failures" -lt "$threshold" ] && continue
+	failures=0
+
+	case "$stage" in
+		0)
+			logger -t "$tag" 'recovery stage 1: wifi reload'
+			run_bounded wifi reload
+			result=$?
+			[ "$result" -eq 124 ] && reboot_after_timeout
+			stage=1
+			;;
+		1)
+			logger -t "$tag" 'recovery stage 2: driver reload'
+			reload_driver
+			result=$?
+			[ "$result" -eq 124 ] && reboot_after_timeout
+			[ "$result" -eq 0 ] || logger -t "$tag" 'driver reload failed'
+			stage=2
+			;;
+		*)
+			logger -t "$tag" 'recovery stage 3: reboot'
+			sync
+			reboot
+			exit 0
+			;;
+	esac
+done

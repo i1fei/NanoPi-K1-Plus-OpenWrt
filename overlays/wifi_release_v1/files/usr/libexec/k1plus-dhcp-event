@@ -1,0 +1,51 @@
+#!/bin/sh
+
+state_dir=/tmp/k1plus-net
+tag=k1plus-netmode
+mkdir -p "$state_dir"
+
+case "$1" in
+	bound|renew)
+		prefix=$(/bin/ipcalc.sh "$ip" "${subnet:-255.255.255.0}" 2>/dev/null |
+			sed -n 's/^PREFIX=//p')
+		case "$prefix" in
+			''|*[!0-9]*) logger -t "$tag" "invalid DHCP subnet for $ip"; exit 1 ;;
+		esac
+		case "$lease" in
+			''|*[!0-9]*) lease=3600 ;;
+		esac
+
+		old_ip=$(cat "$state_dir/ip" 2>/dev/null || true)
+		ip -4 addr replace "$ip/$prefix" dev "$interface" || exit 1
+		ip -4 route del default dev "$interface" 2>/dev/null || true
+		set -- $router
+		[ -n "$1" ] && ip -4 route replace default via "$1" dev "$interface" metric 10
+
+		mkdir -p /tmp/resolv.conf.d
+		: > /tmp/resolv.conf.d/resolv.conf.auto.k1plus
+		for server in $dns; do
+			printf 'nameserver %s\n' "$server" >> /tmp/resolv.conf.d/resolv.conf.auto.k1plus
+		done
+		if [ -s /tmp/resolv.conf.d/resolv.conf.auto.k1plus ]; then
+			mv /tmp/resolv.conf.d/resolv.conf.auto.k1plus /tmp/resolv.conf.d/resolv.conf.auto
+		else
+			rm -f /tmp/resolv.conf.d/resolv.conf.auto.k1plus
+		fi
+
+		now=$(date +%s)
+		printf '%s\n' "$ip" > "$state_dir/ip"
+		printf '%s\n' "$ip" > /tmp/current-ip
+		printf '%s\n' "$((now + lease))" > "$state_dir/expires"
+		: > "$state_dir/bound"
+		[ "$old_ip" = "$ip" ] || logger -t "$tag" "MODE_A address changed ${old_ip:-none} -> $ip"
+		;;
+	deconfig)
+		# Keep the last address until the recorded lease expires.
+		logger -t "$tag" 'DHCP client deconfig deferred until lease expiry'
+		;;
+	nak)
+		logger -t "$tag" 'upstream DHCP returned NAK'
+		;;
+esac
+
+exit 0

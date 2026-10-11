@@ -79,6 +79,21 @@ done
 [ -f "$SOURCE_DIR/files/etc/uci-defaults/97-k1-plus-wifi-compat-v3" ] &&
 	cp "$SOURCE_DIR/files/etc/uci-defaults/97-k1-plus-wifi-compat-v3" \
 		"$ARTIFACT_DIR/k1-plus-wifi-compat-v3-policy"
+[ -f "$SOURCE_DIR/files/etc/uci-defaults/99-k1-plus-wifi-release-v1" ] &&
+	cp "$SOURCE_DIR/files/etc/uci-defaults/99-k1-plus-wifi-release-v1" \
+		"$ARTIFACT_DIR/k1-plus-wifi-release-v1-policy"
+[ -f "$SOURCE_DIR/files/usr/sbin/k1plus-network-mode" ] &&
+	cp "$SOURCE_DIR/files/usr/sbin/k1plus-network-mode" \
+		"$ARTIFACT_DIR/k1plus-network-mode"
+[ -f "$SOURCE_DIR/files/usr/sbin/k1plus-wifi-watchdog" ] &&
+	cp "$SOURCE_DIR/files/usr/sbin/k1plus-wifi-watchdog" \
+		"$ARTIFACT_DIR/k1plus-wifi-watchdog"
+[ -f "$SOURCE_DIR/files/etc/config/k1plus_network" ] &&
+	cp "$SOURCE_DIR/files/etc/config/k1plus_network" \
+		"$ARTIFACT_DIR/k1plus-network-config"
+[ -f "$SOURCE_DIR/files/etc/config/k1plus_watchdog" ] &&
+	cp "$SOURCE_DIR/files/etc/config/k1plus_watchdog" \
+		"$ARTIFACT_DIR/k1plus-watchdog-config"
 [ -f "$SOURCE_DIR/files/etc/config/wireless" ] &&
 	cp "$SOURCE_DIR/files/etc/config/wireless" \
 		"$ARTIFACT_DIR/k1-plus-wireless-config"

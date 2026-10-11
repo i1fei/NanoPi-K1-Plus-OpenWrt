@@ -1,0 +1,102 @@
+#!/bin/sh
+
+. /lib/functions.sh
+
+[ -e /etc/wifi-release-done ] && exit 0
+[ "$(board_name)" = friendlyelec,nanopi-k1-plus ] || exit 0
+[ -f /etc/modules.d/rtl8189es ] || exit 0
+
+fail() {
+	logger -t k1-plus "wifi_release_v1 provisioning failed: $1"
+	uci -q set wireless.radio0.disabled='1'
+	uci -q set wireless.default_radio0.disabled='1'
+	uci -q commit wireless
+	exit 0
+}
+
+mac=$(cat /sys/class/net/eth0/address 2>/dev/null) || fail 'missing eth0 MAC'
+compact_mac=$(printf '%s' "$mac" | tr -d ':')
+[ "${#compact_mac}" -eq 12 ] || fail 'invalid eth0 MAC'
+suffix=$(printf '%s' "$compact_mac" | cut -c9-12 | tr 'a-f' 'A-F')
+ssid="NanoPi-$suffix"
+
+password=
+attempt=0
+while [ "${#password}" -lt 12 ] && [ "$attempt" -lt 5 ]; do
+	password=$(dd if=/dev/urandom bs=24 count=1 2>/dev/null |
+		base64 | tr -dc 'A-Za-z0-9' | cut -c1-12)
+	attempt=$((attempt + 1))
+done
+[ "${#password}" -eq 12 ] || fail 'credential generation failed'
+
+ula_prefix=$(uci -q get network.globals.ula_prefix || true)
+cat > /etc/config/network <<EOF || fail 'network configuration failed'
+config interface 'loopback'
+	option device 'lo'
+	option proto 'static'
+	list ipaddr '127.0.0.1/8'
+
+config globals 'globals'
+	option ula_prefix '$ula_prefix'
+
+config device 'br_lan'
+	option name 'br-lan'
+	option type 'bridge'
+	option stp '1'
+	list ports 'eth0'
+
+config interface 'lan'
+	option device 'br-lan'
+	option proto 'none'
+EOF
+
+uci -q batch <<EOF || fail 'UCI provisioning failed'
+set system.@system[0].hostname='nanopi-k1plus'
+set dhcp.lan.ignore='1'
+set dhcp.lan.start='100'
+set dhcp.lan.limit='100'
+set dhcp.lan.leasetime='12h'
+set dhcp.lan.ra='disabled'
+set dhcp.lan.dhcpv6='disabled'
+set wireless.radio0.type='mac80211'
+set wireless.radio0.phy='phy0'
+set wireless.radio0.band='2g'
+set wireless.radio0.channel='6'
+set wireless.radio0.htmode='HT20'
+set wireless.radio0.country='CN'
+set wireless.radio0.disabled='0'
+set wireless.default_radio0.device='radio0'
+set wireless.default_radio0.network='lan'
+set wireless.default_radio0.mode='ap'
+set wireless.default_radio0.ssid='$ssid'
+set wireless.default_radio0.encryption='psk2+ccmp'
+set wireless.default_radio0.key='$password'
+set wireless.default_radio0.max_inactivity='1800'
+set wireless.default_radio0.disassoc_low_ack='0'
+set wireless.default_radio0.maxassoc='16'
+set wireless.default_radio0.disabled='0'
+EOF
+uci -q commit system || fail 'system commit failed'
+uci -q commit network || fail 'network commit failed'
+uci -q commit dhcp || fail 'DHCP commit failed'
+uci -q commit wireless || fail 'wireless commit failed'
+
+fallback_ip=$(uci -q get k1plus_network.main.fallback_ip) || fail 'missing fallback address'
+umask 077
+{
+	printf 'SSID: %s\n' "$ssid"
+	printf 'Password: %s\n' "$password"
+	printf 'Mode A: find nanopi-k1plus in the upstream router client list, or run: cat /tmp/current-ip\n'
+	printf 'Mode B: wait for device DHCP, then open http://%s/; alternatively set the PC in the same subnet.\n' "$fallback_ip"
+	printf 'Recovery: use the serial console. Change the root and WiFi passwords after first login.\n'
+} > /root/WIFI-PASSWORD.txt || fail 'credential file write failed'
+chmod 600 /root/WIFI-PASSWORD.txt || fail 'credential file permission failed'
+printf '%s\n%s\n' "$password" "$password" | passwd root >/dev/null 2>&1 || fail 'root credential update failed'
+
+for service in k1plus-hw-watchdog k1plus-network k1plus-wifi-watchdog; do
+	/etc/init.d/$service enable || fail "$service enable failed"
+done
+
+touch /etc/wifi-release-done || fail 'completion marker failed'
+logger -t k1-plus "wifi_release_v1 provisioned $ssid; DHCP mode service enabled"
+exit 0

@@ -1,0 +1,27 @@
+#!/bin/sh /etc/rc.common
+
+START=12
+USE_PROCD=1
+
+start_service() {
+	. /lib/functions.sh
+	config_load k1plus_watchdog
+	config_get timeout hardware timeout
+	config_get frequency hardware frequency
+	config_get_bool magicclose hardware magicclose
+	for value in "$timeout" "$frequency" "$magicclose"; do
+		case "$value" in ''|*[!0-9]*) logger -t k1plus-hw-watchdog 'invalid hardware watchdog configuration'; return 1;; esac
+	done
+	result=$(ubus call system watchdog \
+		"{\"frequency\":$frequency,\"timeout\":$timeout,\"magicclose\":$magicclose,\"stop\":false}" 2>/dev/null)
+	status=$(printf '%s' "$result" | jsonfilter -e '@.status' 2>/dev/null)
+	if [ "$status" = running ]; then
+		logger -t k1plus-hw-watchdog "enabled: timeout=${timeout}s frequency=${frequency}s"
+	else
+		logger -t k1plus-hw-watchdog "unavailable: status=${status:-unknown}"
+	fi
+}
+
+service_triggers() {
+	procd_add_reload_trigger k1plus_watchdog
+}

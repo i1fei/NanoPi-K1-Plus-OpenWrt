@@ -1,0 +1,115 @@
+#!/bin/sh
+set -eu
+
+root=${1:?release root is required}
+failures=0
+
+pass() {
+	printf '%s=PASS\n' "$1"
+}
+
+fail() {
+	printf '%s=FAIL\n' "$1" >&2
+	failures=$((failures + 1))
+}
+
+require_file() {
+	[ -f "$root/$1" ] && pass "$2" || fail "$2"
+}
+
+require_exec() {
+	[ -x "$root/$1" ] && pass "$2" || fail "$2"
+}
+
+require_pattern() {
+	grep -Eq "$2" "$root/$1" && pass "$3" || fail "$3"
+}
+
+reject_pattern() {
+	if grep -Eq "$2" "$root/$1"; then fail "$3"; else pass "$3"; fi
+}
+
+for path in \
+	etc/config/wireless \
+	etc/config/dhcp \
+	etc/config/k1plus_network \
+	etc/config/k1plus_watchdog \
+	etc/uci-defaults/99-k1-plus-wifi-release-v1 \
+	etc/init.d/k1plus-network \
+	etc/init.d/k1plus-wifi-watchdog \
+	etc/init.d/k1plus-hw-watchdog \
+	etc/profile.d/99-k1-plus-wifi.sh \
+	usr/libexec/k1plus-dhcp-event \
+	usr/sbin/k1plus-network-mode \
+	usr/sbin/k1plus-wifi-watchdog; do
+	require_file "$path" "FILE_$(printf '%s' "$path" | tr '/.-' '___')"
+done
+
+for path in \
+	etc/uci-defaults/99-k1-plus-wifi-release-v1 \
+	etc/init.d/k1plus-network \
+	etc/init.d/k1plus-wifi-watchdog \
+	etc/init.d/k1plus-hw-watchdog \
+	usr/libexec/k1plus-dhcp-event \
+	usr/sbin/k1plus-network-mode \
+	usr/sbin/k1plus-wifi-watchdog; do
+	require_exec "$path" "EXEC_$(printf '%s' "$path" | tr '/.-' '___')"
+	sh -n "$root/$path" && pass "SYNTAX_$(printf '%s' "$path" | tr '/.-' '___')" || fail "SYNTAX_$(printf '%s' "$path" | tr '/.-' '___')"
+done
+
+require_pattern etc/config/wireless "^[[:space:]]*option network 'lan'$" WIRELESS_NETWORK_LAN
+require_pattern etc/config/wireless "^[[:space:]]*option channel '6'$" WIRELESS_CHANNEL_6
+require_pattern etc/config/wireless "^[[:space:]]*option htmode 'HT20'$" WIRELESS_HT20
+require_pattern etc/config/wireless "^[[:space:]]*option country 'CN'$" WIRELESS_COUNTRY_CN
+require_pattern etc/config/wireless "^[[:space:]]*option encryption 'psk2\\+ccmp'$" WIRELESS_WPA2_CCMP
+require_pattern etc/config/wireless "^[[:space:]]*option max_inactivity '1800'$" WIFI_IOT_INACTIVITY
+require_pattern etc/config/wireless "^[[:space:]]*option disassoc_low_ack '0'$" WIFI_IOT_LOW_ACK
+require_pattern etc/config/wireless "^[[:space:]]*option maxassoc '16'$" WIFI_STATION_LIMIT
+reject_pattern etc/config/wireless "^[[:space:]]*option key " WIRELESS_STATIC_CREDENTIAL_ABSENT
+
+require_pattern etc/config/dhcp "^[[:space:]]*option ignore '1'$" FALLBACK_DHCP_DEFAULT_OFF
+require_pattern etc/config/dhcp "^[[:space:]]*option dhcpv4 'disabled'$" UCI_DHCPV4_DEFAULT_OFF
+require_pattern etc/config/k1plus_network "^[[:space:]]*option dhcp_timeout '90'$" DHCP_TIMEOUT_CONFIGURED
+require_pattern etc/config/k1plus_network "^[[:space:]]*option probe_interval '30'$" DHCP_PROBE_INTERVAL_CONFIGURED
+require_pattern etc/config/k1plus_network "^[[:space:]]*option fallback_ip '192\\.168\\.1\\.1'$" FALLBACK_ADDRESS_CONFIGURED
+require_pattern etc/config/k1plus_network "^[[:space:]]*option fallback_netmask '255\\.255\\.255\\.0'$" FALLBACK_NETMASK_CONFIGURED
+reject_pattern etc/config/k1plus_network '169\\.254\\.' LINK_LOCAL_AUXILIARY_ABSENT
+
+policy=etc/uci-defaults/99-k1-plus-wifi-release-v1
+require_pattern "$policy" '/dev/urandom' RANDOM_CREDENTIAL_SOURCE
+require_pattern "$policy" 'passwd root' ROOT_CREDENTIAL_SET
+require_pattern "$policy" "option name 'br-lan'" BR_LAN_DEFINED
+require_pattern "$policy" "list ports 'eth0'" BR_LAN_ETH0_PORT
+require_pattern "$policy" "option proto 'none'" LAN_ADDRESS_OWNED_BY_STATE_MACHINE
+require_pattern "$policy" "set system\\.@system\\[0\\]\\.hostname='nanopi-k1plus'" HOSTNAME_FIXED
+require_pattern "$policy" "set wireless\\.default_radio0\\.network='lan'" WLAN_JOINS_BR_LAN
+require_pattern "$policy" "set dhcp\\.lan\\.ignore='1'" DEVICE_DHCP_DEFAULT_OFF
+reject_pattern "$policy" "option key '[^$]" HARDCODED_UCI_CREDENTIAL_ABSENT
+reject_pattern "$policy" '(^|[[:space:]])(wifi|hostapd)([[:space:]]|$)|/etc/init\\.d/[^[:space:]]+[[:space:]]+start' FIRSTBOOT_DEFERS_RUNTIME_START
+require_pattern etc/profile.d/99-k1-plus-wifi.sh '/tmp/current-ip' LOGIN_CURRENT_IP_HINT
+require_pattern etc/profile.d/99-k1-plus-wifi.sh 'serial console' LOGIN_SERIAL_RECOVERY_HINT
+
+mode=usr/sbin/k1plus-network-mode
+require_pattern "$mode" 'arping -D' DUPLICATE_ADDRESS_DETECTION
+require_pattern "$mode" '/tmp/current-ip' CURRENT_IP_TRACKING
+require_pattern "$mode" 'MODE_A' MODE_A_LOGGING
+require_pattern "$mode" 'MODE_B' MODE_B_LOGGING
+require_pattern "$mode" 'stop_fallback_dhcp' DHCP_DISABLED_BEFORE_PROBE
+reject_pattern "$mode" '192\\.168\\.1\\.1|255\\.255\\.255\\.0' NETWORK_VALUES_NOT_HARDCODED_IN_STATE_MACHINE
+reject_pattern "$mode" '(^|[[:space:]])(wifi|hostapd)([[:space:]]|$)' MODE_SWITCH_DOES_NOT_RESTART_WIFI
+
+watchdog=usr/sbin/k1plus-wifi-watchdog
+require_pattern "$watchdog" 'wifi reload' WIFI_WATCHDOG_RELOAD_STAGE
+require_pattern "$watchdog" 'rmmod rtl8189es' WIFI_WATCHDOG_DRIVER_STAGE
+require_pattern "$watchdog" 'reboot' WIFI_WATCHDOG_REBOOT_STAGE
+require_pattern etc/config/k1plus_watchdog "^[[:space:]]*option timeout '30'$" HARDWARE_WATCHDOG_TIMEOUT
+require_pattern etc/config/k1plus_watchdog "^[[:space:]]*option frequency '5'$" HARDWARE_WATCHDOG_FREQUENCY
+require_pattern etc/init.d/k1plus-hw-watchdog 'ubus call system watchdog' HARDWARE_WATCHDOG_PROCD_API
+
+if grep -REq "wpa_passphrase=|^[[:space:]]*option key '[^$]" "$root/etc/config" "$root/etc/uci-defaults"; then
+	fail HARDCODED_CREDENTIAL_SCAN
+else
+	pass HARDCODED_CREDENTIAL_SCAN
+fi
+
+[ "$failures" -eq 0 ] || exit 1
