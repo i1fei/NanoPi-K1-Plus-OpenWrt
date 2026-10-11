@@ -106,6 +106,12 @@ require_pattern etc/config/k1plus_watchdog "^[[:space:]]*option timeout '30'$" H
 require_pattern etc/config/k1plus_watchdog "^[[:space:]]*option frequency '5'$" HARDWARE_WATCHDOG_FREQUENCY
 require_pattern etc/init.d/k1plus-hw-watchdog 'ubus call system watchdog' HARDWARE_WATCHDOG_PROCD_API
 
+if [ -d "$root/lib/modules" ]; then
+	require_file etc/config/uhttpd UHTTPD_CONFIG
+	require_exec usr/bin/arping ARPING_BINARY
+	require_pattern etc/config/uhttpd "^[[:space:]]*list listen_http '0\\.0\\.0\\.0:80'$" UHTTPD_PORT_80
+fi
+
 if grep -REq "wpa_passphrase=|^[[:space:]]*option key '[^$]" "$root/etc/config" "$root/etc/uci-defaults"; then
 	fail HARDCODED_CREDENTIAL_SCAN
 else

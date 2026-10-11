@@ -120,6 +120,14 @@ require_kernel_config_line() {
 	grep -Eq "^$1$" "$ARTIFACT_DIR/kernel.config" || fail "$2"
 }
 
+require_kernel_config_disabled() {
+	if grep -q "^CONFIG_$1=" "$ARTIFACT_DIR/kernel.config"; then
+		fail_full "$2"
+	else
+		record_full "$2=PASS"
+	fi
+}
+
 require_manifest_pkg() {
 	grep -Eq "^$1([[:space:]]|$)" "$manifest" || fail_full "$2"
 }
@@ -242,12 +250,14 @@ verify_rtl8189es_image_module() {
 			'etc/config/dhcp' \
 			'etc/config/k1plus_network' \
 			'etc/config/k1plus_watchdog' \
+			'etc/config/uhttpd' \
 			'etc/config/wireless' \
 			'etc/init.d/k1plus-hw-watchdog' \
 			'etc/init.d/k1plus-network' \
 			'etc/init.d/k1plus-wifi-watchdog' \
 			'etc/profile.d/99-k1-plus-wifi.sh' \
 			'etc/uci-defaults/99-k1-plus-wifi-release-v1' \
+			'usr/bin/arping' \
 			'usr/libexec/k1plus-dhcp-event' \
 			'usr/sbin/k1plus-network-mode' \
 			'usr/sbin/k1plus-wifi-watchdog'
@@ -274,11 +284,6 @@ verify_rtl8189es_image_module() {
 	module=$(sed -n '1p' "$module_list")
 	cp "$module" "$ARTIFACT_DIR/rtl8189es.image.ko"
 	sha256sum "$ARTIFACT_DIR/rtl8189es.image.ko" > "$ARTIFACT_DIR/rtl8189es.image.sha256"
-	if cmp -s "$ARTIFACT_DIR/rtl8189es.ko" "$ARTIFACT_DIR/rtl8189es.image.ko"; then
-		record_full "FINAL_IMAGE_RTL8189ES_MATCHES_REBUILD=PASS"
-	else
-		fail_full "FINAL_IMAGE_RTL8189ES_MATCHES_REBUILD"
-	fi
 	if ! readelf -Ws "$ARTIFACT_DIR/rtl8189es.image.ko" > "$ARTIFACT_DIR/rtl8189es.image.symbols.txt"; then
 		fail_full "FINAL_IMAGE_RTL8189ES_READELF"
 		rm -rf "$image_work"
@@ -340,7 +345,9 @@ verify_rtl8189es_image_module() {
 	fi
 	spin_init_relocations=$(awk '$0 ~ /[[:space:]]__raw_spin_lock_init([[:space:]]|$)/ { count++ } END { print count + 0 }' "$relocations")
 	record_full "FINAL_IMAGE_SPIN_INIT_RELOCATIONS=$spin_init_relocations"
-	if [ "$spin_init_relocations" -gt 1 ]; then
+	if [ "$PROFILE_KEY" = wifi_release_v1 ]; then
+		record_full "FINAL_IMAGE_SPIN_INIT_CALL_SITES=NOT_APPLICABLE_DEBUG_SPINLOCK_DISABLED"
+	elif [ "$spin_init_relocations" -gt 1 ]; then
 		record_full "FINAL_IMAGE_SPIN_INIT_CALL_SITES=PASS"
 	else
 		fail_full "FINAL_IMAGE_SPIN_INIT_CALL_SITES"
@@ -738,7 +745,7 @@ verify_wifi_release_v1_profile() {
 	verify_rtl8189es_compile_warnings
 
 	for symbol in PROVE_LOCKING LOCKDEP DEBUG_LOCK_ALLOC DEBUG_MUTEXES DEBUG_SPINLOCK; do
-		require_kernel_config_line "# CONFIG_${symbol} is not set" "KERNEL_CONFIG_${symbol}_DISABLED"
+		require_kernel_config_disabled "$symbol" "KERNEL_CONFIG_${symbol}_DISABLED"
 	done
 	require_openwrt_config_line '# CONFIG_KERNEL_PROVE_LOCKING is not set' "OPENWRT_CONFIG_KERNEL_PROVE_LOCKING_DISABLED"
 

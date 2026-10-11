@@ -255,11 +255,10 @@ check_wifi_release_v1() {
 		CONFIG_PACKAGE_kmod-rtl8189es \
 		CONFIG_PACKAGE_wpad-openssl \
 		CONFIG_PACKAGE_wireless-regdb \
-		CONFIG_PACKAGE_libiwinfo \
 		CONFIG_PACKAGE_iwinfo \
 		CONFIG_PACKAGE_iw \
 		CONFIG_PACKAGE_iperf3 \
-		CONFIG_PACKAGE_arping \
+		CONFIG_PACKAGE_iputils-arping \
 		CONFIG_PACKAGE_rpcd-mod-iwinfo \
 		CONFIG_PACKAGE_luci \
 		CONFIG_PACKAGE_luci-mod-network \
