@@ -50,10 +50,10 @@ reload_driver() {
 	run_bounded wifi down
 	result=$?
 	[ "$result" -eq 0 ] || return "$result"
-	run_bounded rmmod rtl8189es
+	run_bounded /sbin/kmodloader -r rtl8189es
 	result=$?
 	[ "$result" -eq 0 ] || return "$result"
-	run_bounded modprobe rtl8189es
+	run_bounded /sbin/kmodloader rtl8189es
 	result=$?
 	[ "$result" -eq 0 ] || return "$result"
 	run_bounded wifi up

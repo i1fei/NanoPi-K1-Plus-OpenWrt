@@ -77,7 +77,7 @@ reject_pattern etc/config/k1plus_network '169\\.254\\.' LINK_LOCAL_AUXILIARY_ABS
 
 policy=etc/uci-defaults/99-k1-plus-wifi-release-v1
 require_pattern "$policy" '/dev/urandom' RANDOM_CREDENTIAL_SOURCE
-require_pattern "$policy" "tr -dc 'A-Za-z0-9'.* /dev/urandom \\| head -c 12" RANDOM_CREDENTIAL_EXISTING_APPLETS
+require_pattern "$policy" "head -c 256 /dev/urandom \\| tr -dc 'A-Za-z0-9'.* \\| cut -c 1-12" RANDOM_CREDENTIAL_EXISTING_APPLETS
 reject_pattern "$policy" '(^|[[:space:]])base64([[:space:]]|$)' BASE64_DEPENDENCY_ABSENT
 require_pattern "$policy" 'passwd root' ROOT_CREDENTIAL_SET
 require_pattern "$policy" "option name 'br-lan'" BR_LAN_DEFINED
@@ -110,7 +110,8 @@ require_pattern usr/sbin/k1plus-network-mode '/etc/wifi-release-done' NETWORK_SE
 require_pattern "$watchdog" '/etc/wifi-release-done' WIFI_WATCHDOG_PROVISIONING_GATE
 require_pattern etc/init.d/k1plus-hw-watchdog '/etc/wifi-release-done' HARDWARE_WATCHDOG_PROVISIONING_GATE
 require_pattern "$watchdog" 'wifi reload' WIFI_WATCHDOG_RELOAD_STAGE
-require_pattern "$watchdog" 'rmmod rtl8189es' WIFI_WATCHDOG_DRIVER_STAGE
+require_pattern "$watchdog" '/sbin/kmodloader -r rtl8189es' WIFI_WATCHDOG_DRIVER_UNLOAD
+require_pattern "$watchdog" '/sbin/kmodloader rtl8189es' WIFI_WATCHDOG_DRIVER_LOAD
 require_pattern "$watchdog" 'reboot' WIFI_WATCHDOG_REBOOT_STAGE
 require_pattern etc/config/k1plus_watchdog "^[[:space:]]*option timeout '30'$" HARDWARE_WATCHDOG_TIMEOUT
 require_pattern etc/config/k1plus_watchdog "^[[:space:]]*option frequency '5'$" HARDWARE_WATCHDOG_FREQUENCY

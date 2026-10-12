@@ -114,11 +114,26 @@ fi
 
 # wifi_compat_v3: same as v2 but WITHOUT the 012-reuse workaround, so the
 # del_virtual_intf fix (015) is actually exercised by hostap wdev_remove.
-if [ "$PATCH_MODE" = "wifi_compat_v3" ] || [ "$PATCH_MODE" = "wifi_release_v1" ]; then
+# wifi_compat_v3 keeps the legacy compatibility policy.  The release profile
+# provisions its own bridge and wireless config; applying the compatibility
+# policy there would reintroduce a fixed fallback PSK into the image.
+if [ "$PATCH_MODE" = "wifi_compat_v3" ]; then
 	for patch in \
 		"$PATCH_DIR/007-stabilize-k1-plus-rtl8189es-radio.patch" \
 		"$PATCH_DIR/008-fix-k1-plus-runtime-radio-generation.patch" \
 		"$PATCH_DIR/009-add-k1-plus-wifi-compat-policy.patch" \
+		"$PATCH_DIR/010-fix-k1-plus-single-phy-fallback.patch"; do
+		[ -f "$patch" ] || { echo "missing patch: $patch" >&2; exit 1; }
+		git -C "$SOURCE_DIR" apply --check "$patch"
+		git -C "$SOURCE_DIR" apply "$patch"
+		echo "APPLIED $(basename "$patch")"
+	done
+fi
+
+if [ "$PATCH_MODE" = "wifi_release_v1" ]; then
+	for patch in \
+		"$PATCH_DIR/007-stabilize-k1-plus-rtl8189es-radio.patch" \
+		"$PATCH_DIR/008-fix-k1-plus-runtime-radio-generation.patch" \
 		"$PATCH_DIR/010-fix-k1-plus-single-phy-fallback.patch"; do
 		[ -f "$patch" ] || { echo "missing patch: $patch" >&2; exit 1; }
 		git -C "$SOURCE_DIR" apply --check "$patch"
