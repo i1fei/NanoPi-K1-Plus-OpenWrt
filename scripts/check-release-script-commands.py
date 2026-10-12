@@ -178,14 +178,28 @@ def extract_commands_from_text(text: str) -> tuple[set[str], set[str]]:
 
 
 def resolve_symlink(root: Path, path: Path) -> Path | None:
-    current = path
-    for _ in range(16):
-        if not current.is_symlink():
-            return current if current.exists() else None
-        target = os.readlink(current)
-        current = root / target.lstrip("/") if target.startswith("/") else current.parent / target
-        current = Path(os.path.normpath(current))
-    return None
+	"""Resolve an image path, including symlinked parent directories."""
+	try:
+		pending = list(path.relative_to(root).parts)
+	except ValueError:
+		return None
+	current = root
+	for _ in range(64):
+		if not pending:
+			return current if current.exists() else None
+		component = pending.pop(0)
+		candidate = current / component
+		if not candidate.is_symlink():
+			current = candidate
+			continue
+		target = os.readlink(candidate)
+		if target.startswith("/"):
+			current = root
+			pending = list(Path(target.lstrip("/")).parts) + pending
+		else:
+			current = candidate.parent
+			pending = list(Path(target).parts) + pending
+	return None
 
 
 def resolve_command(root: Path, command: str) -> tuple[str, str]:

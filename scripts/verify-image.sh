@@ -214,10 +214,13 @@ verify_rtl8189es_image_module() {
 		return
 	fi
 	image_work=$(mktemp -d)
-	trap 'rm -rf "$image_work"' 0 1 2 15
+	cleanup_image_work() {
+		sudo -n rm -rf -- "$image_work"
+	}
+	trap cleanup_image_work 0 1 2 15
 	if ! gzip -dc "$image" > "$image_work/sdcard.img"; then
 		fail_full "FINAL_IMAGE_DECOMPRESS"
-		rm -rf "$image_work"
+		cleanup_image_work
 		trap - 0 1 2 15
 		return
 	fi
@@ -226,21 +229,21 @@ verify_rtl8189es_image_module() {
 			python3 -c 'import json, sys; p = json.load(sys.stdin)["partitiontable"]["partitions"]; print(p[1]["start"], p[1]["size"])'
 	); then
 		fail_full "ROOTFS_PARTITION"
-		rm -rf "$image_work"
+		cleanup_image_work
 		trap - 0 1 2 15
 		return
 	fi
 	set -- $partition
 	if [ "$#" -ne 2 ]; then
 		fail_full "ROOTFS_PARTITION"
-		rm -rf "$image_work"
+		cleanup_image_work
 		trap - 0 1 2 15
 		return
 	fi
 	if ! dd if="$image_work/sdcard.img" of="$image_work/rootfs.squashfs" \
 		bs=512 skip="$1" count="$2" conv=sparse status=none; then
 		fail_full "ROOTFS_PARTITION_EXTRACT"
-		rm -rf "$image_work"
+		cleanup_image_work
 		trap - 0 1 2 15
 		return
 	fi
@@ -253,7 +256,7 @@ verify_rtl8189es_image_module() {
 	if ! sudo -n "$unsquashfs" -no-progress -d "$image_work/rootfs" \
 		"$image_work/rootfs.squashfs" "$@" >/dev/null; then
 		fail_full "ROOTFS_SQUASHFS_EXTRACT"
-		rm -rf "$image_work"
+		cleanup_image_work
 		trap - 0 1 2 15
 		return
 	fi
@@ -263,7 +266,7 @@ verify_rtl8189es_image_module() {
 	module_count=$(wc -l < "$module_list" | tr -d '[:space:]')
 	if [ "$module_count" -ne 1 ]; then
 		fail_full "FINAL_IMAGE_RTL8189ES_COUNT"
-		rm -rf "$image_work"
+		cleanup_image_work
 		trap - 0 1 2 15
 		return
 	fi
@@ -272,13 +275,13 @@ verify_rtl8189es_image_module() {
 	sha256sum "$ARTIFACT_DIR/rtl8189es.image.ko" > "$ARTIFACT_DIR/rtl8189es.image.sha256"
 	if ! readelf -Ws "$ARTIFACT_DIR/rtl8189es.image.ko" > "$ARTIFACT_DIR/rtl8189es.image.symbols.txt"; then
 		fail_full "FINAL_IMAGE_RTL8189ES_READELF"
-		rm -rf "$image_work"
+		cleanup_image_work
 		trap - 0 1 2 15
 		return
 	fi
 	if ! readelf -rW "$ARTIFACT_DIR/rtl8189es.image.ko" > "$ARTIFACT_DIR/rtl8189es.image.relocations.txt"; then
 		fail_full "FINAL_IMAGE_RTL8189ES_RELOCATIONS"
-		rm -rf "$image_work"
+		cleanup_image_work
 		trap - 0 1 2 15
 		return
 	fi
@@ -385,7 +388,7 @@ verify_rtl8189es_image_module() {
 		esac
 	fi
 
-	rm -rf "$image_work"
+	cleanup_image_work
 	trap - 0 1 2 15
 }
 

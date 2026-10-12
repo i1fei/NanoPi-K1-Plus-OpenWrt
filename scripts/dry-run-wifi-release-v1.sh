@@ -11,12 +11,12 @@ record() {
 }
 
 run_firstboot() {
-	sudo chroot "$root" /bin/sh -c '. /lib/functions/system.sh; . "$1"' sh "$script"
+	sudo -n chroot "$root" /bin/sh -c '. /lib/functions/system.sh; . "$1"' sh "$script"
 }
 
 cleanup() {
 	if [ "$mounted" -eq 1 ]; then
-		sudo umount "$root/dev" || true
+		sudo -n umount "$root/dev" || true
 	fi
 }
 trap cleanup EXIT INT HUP TERM
@@ -29,12 +29,12 @@ trap cleanup EXIT INT HUP TERM
 }
 record 'QEMU_AARCH64_BINFMT=PASS'
 
-mkdir -p "$root/dev"
-sudo mount --bind /dev "$root/dev"
+sudo -n mkdir -p "$root/dev"
+sudo -n mount --bind /dev "$root/dev"
 mounted=1
-mkdir -p "$root/tmp/sysinfo" "$root/sys/class/net/eth0"
-printf '%s\n' friendlyelec,nanopi-k1-plus > "$root/tmp/sysinfo/board_name"
-printf '%s\n' 02:11:22:33:44:55 > "$root/sys/class/net/eth0/address"
+sudo -n mkdir -p "$root/tmp/sysinfo" "$root/sys/class/net/eth0"
+printf '%s\n' friendlyelec,nanopi-k1-plus | sudo -n tee "$root/tmp/sysinfo/board_name" >/dev/null
+printf '%s\n' 02:11:22:33:44:55 | sudo -n tee "$root/sys/class/net/eth0/address" >/dev/null
 
 for path in \
 	$script \
@@ -45,7 +45,7 @@ for path in \
 	/usr/libexec/k1plus-dhcp-event \
 	/usr/sbin/k1plus-network-mode \
 	/usr/sbin/k1plus-wifi-watchdog; do
-	if sudo chroot "$root" /bin/sh -n "$path"; then
+	if sudo -n chroot "$root" /bin/sh -n "$path"; then
 		record "ASH_SYNTAX_${path#/}=PASS"
 	else
 		record "ASH_SYNTAX_${path#/}=FAIL"
@@ -71,7 +71,7 @@ for check in \
 	"wireless.default_radio0.disabled=0"; do
 	key=${check%%=*}
 	expected=${check#*=}
-	actual=$(sudo chroot "$root" /sbin/uci -q get "$key")
+	actual=$(sudo -n chroot "$root" /sbin/uci -q get "$key")
 	if [ "$actual" = "$expected" ]; then
 		record "DRYRUN_${key}=PASS"
 	else
@@ -83,7 +83,7 @@ done
 [ -e "$root/etc/wifi-release-done" ] || { record 'DRYRUN_DONE_MARKER=FAIL'; exit 1; }
 [ ! -e "$root/root/FIRSTBOOT-FAILED.txt" ] || { record 'DRYRUN_FAILURE_MARKER_ABSENT=FAIL'; exit 1; }
 [ "$(stat -c %a "$root/root/WIFI-PASSWORD.txt")" = 600 ] || { record 'DRYRUN_CREDENTIAL_MODE=FAIL'; exit 1; }
-sudo chroot "$root" /usr/bin/awk -F ': ' \
+sudo -n chroot "$root" /usr/bin/awk -F ': ' \
 	'/^Password:/ { valid = (length($2) == 12) } END { exit !valid }' \
 	/root/WIFI-PASSWORD.txt || { record 'DRYRUN_CREDENTIAL_LENGTH=FAIL'; exit 1; }
 record 'DRYRUN_DONE_MARKER=PASS'
@@ -92,7 +92,7 @@ record 'DRYRUN_CREDENTIAL_MODE=PASS'
 record 'DRYRUN_CREDENTIAL_LENGTH=PASS'
 
 # Exercise the runner contract: failures 1 and 2 retain the script, failure 3 is final.
-rm -f "$root/etc/wifi-release-done" "$root/etc/wifi-release-attempts" \
+sudo -n rm -f "$root/etc/wifi-release-done" "$root/etc/wifi-release-attempts" \
 	"$root/root/FIRSTBOOT-FAILED.txt" "$root/root/WIFI-PASSWORD.txt" \
 	"$root/sys/class/net/eth0/address"
 retry=1
@@ -116,7 +116,7 @@ while [ "$retry" -le 3 ]; do
 			record 'DRYRUN_RETRY_3_COUNTER=FAIL'
 			exit 1
 		}
-		rm -f "$root$script"
+		sudo -n rm -f "$root$script"
 		[ ! -e "$root$script" ] || { record 'DRYRUN_RETRY_3_REMOVED=FAIL'; exit 1; }
 		record 'DRYRUN_RETRY_3_LIMIT=PASS'
 		record 'DRYRUN_RETRY_3_REMOVED=PASS'
