@@ -123,7 +123,11 @@ if [ -d "$root/lib/modules" ]; then
 	require_pattern etc/config/uhttpd "^[[:space:]]*list[[:space:]]+listen_http[[:space:]]+'?0\\.0\\.0\\.0:80'?$" UHTTPD_PORT_80
 fi
 
-if grep -REq "wpa_passphrase=|^[[:space:]]*option key '[^$]" "$root/etc/config" "$root/etc/uci-defaults"; then
+hardcoded_matches=$(grep -REn "wpa_passphrase=|^[[:space:]]*option key '[^$]" \
+	"$root/etc/config" "$root/etc/uci-defaults" || true)
+if [ -n "$hardcoded_matches" ]; then
+	printf '%s\n' 'HARDCODED_CREDENTIAL_MATCHES:' >&2
+	printf '%s\n' "$hardcoded_matches" | sed -E "s#${root}/##" >&2
 	fail HARDCODED_CREDENTIAL_SCAN
 else
 	pass HARDCODED_CREDENTIAL_SCAN

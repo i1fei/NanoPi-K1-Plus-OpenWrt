@@ -22,6 +22,12 @@ run_firstboot_checked() {
 	fi
 	# Preserve the reason in CI evidence, but never emit a generated credential.
 	sed -E 's/(Password: ).*/\1[redacted]/' "$firstboot_log" >> "$report"
+	if [ -f "$root/root/FIRSTBOOT-FAILED.txt" ]; then
+		record 'FIRSTBOOT_FAILURE_MARKER_BEGIN'
+		sed -E 's/(Password: ).*/\1[redacted]/' \
+			"$root/root/FIRSTBOOT-FAILED.txt" >> "$report"
+		record 'FIRSTBOOT_FAILURE_MARKER_END'
+	fi
 	rm -f "$firstboot_log"
 	return 1
 }
