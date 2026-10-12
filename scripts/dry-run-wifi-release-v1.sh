@@ -24,8 +24,8 @@ trap cleanup EXIT INT HUP TERM
 
 [ -x "$root$script" ] || { record 'FIRSTBOOT_SCRIPT=FAIL'; exit 1; }
 [ -e /proc/sys/fs/binfmt_misc/qemu-aarch64 ] || {
-	record 'QEMU_AARCH64_BINFMT=FAIL'
-	exit 1
+	record 'QEMU_AARCH64_BINFMT=SKIPPED(environment unavailable)'
+	exit 2
 }
 record 'QEMU_AARCH64_BINFMT=PASS'
 
