@@ -250,7 +250,7 @@ verify_rtl8189es_image_module() {
 	else
 		set -- 'lib/modules/*/rtl8189es.ko'
 	fi
-	if ! "$unsquashfs" -no-progress -d "$image_work/rootfs" \
+	if ! sudo -n "$unsquashfs" -no-progress -d "$image_work/rootfs" \
 		"$image_work/rootfs.squashfs" "$@" >/dev/null; then
 		fail_full "ROOTFS_SQUASHFS_EXTRACT"
 		rm -rf "$image_work"
