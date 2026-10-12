@@ -22,9 +22,9 @@ run_firstboot_checked() {
 	fi
 	# Preserve the reason in CI evidence, but never emit a generated credential.
 	sed -E 's/(Password: ).*/\1[redacted]/' "$firstboot_log" >> "$report"
-	if [ -f "$root/root/FIRSTBOOT-FAILED.txt" ]; then
+	if sudo -n test -f "$root/root/FIRSTBOOT-FAILED.txt"; then
 		record 'FIRSTBOOT_FAILURE_MARKER_BEGIN'
-		sed -E 's/(Password: ).*/\1[redacted]/' \
+		sudo -n sed -E 's/(Password: ).*/\1[redacted]/' \
 			"$root/root/FIRSTBOOT-FAILED.txt" >> "$report"
 		record 'FIRSTBOOT_FAILURE_MARKER_END'
 	fi
@@ -99,8 +99,11 @@ for check in \
 done
 
 [ -e "$root/etc/wifi-release-done" ] || { record 'DRYRUN_DONE_MARKER=FAIL'; exit 1; }
-[ ! -e "$root/root/FIRSTBOOT-FAILED.txt" ] || { record 'DRYRUN_FAILURE_MARKER_ABSENT=FAIL'; exit 1; }
-[ "$(stat -c %a "$root/root/WIFI-PASSWORD.txt")" = 600 ] || { record 'DRYRUN_CREDENTIAL_MODE=FAIL'; exit 1; }
+if sudo -n test -e "$root/root/FIRSTBOOT-FAILED.txt"; then
+	record 'DRYRUN_FAILURE_MARKER_ABSENT=FAIL'
+	exit 1
+fi
+[ "$(sudo -n stat -c %a "$root/root/WIFI-PASSWORD.txt")" = 600 ] || { record 'DRYRUN_CREDENTIAL_MODE=FAIL'; exit 1; }
 sudo -n chroot "$root" /usr/bin/awk -F ': ' \
 	'/^Password:/ { valid = (length($2) == 12) } END { exit !valid }' \
 	/root/WIFI-PASSWORD.txt || { record 'DRYRUN_CREDENTIAL_LENGTH=FAIL'; exit 1; }
@@ -124,7 +127,7 @@ while [ "$retry" -le 3 ]; do
 			record "DRYRUN_RETRY_${retry}_COUNTER=FAIL"
 			exit 1
 		}
-		[ -e "$root/root/FIRSTBOOT-FAILED.txt" ] || {
+		sudo -n test -e "$root/root/FIRSTBOOT-FAILED.txt" || {
 			record "DRYRUN_RETRY_${retry}_MARKER=FAIL"
 			exit 1
 		}
@@ -144,7 +147,7 @@ while [ "$retry" -le 3 ]; do
 	fi
 	retry=$((retry + 1))
 done
-[ -e "$root/root/FIRSTBOOT-FAILED.txt" ] || { record 'DRYRUN_FAILURE_MARKER=FAIL'; exit 1; }
+sudo -n test -e "$root/root/FIRSTBOOT-FAILED.txt" || { record 'DRYRUN_FAILURE_MARKER=FAIL'; exit 1; }
 [ ! -e "$root/etc/wifi-release-done" ] || { record 'DRYRUN_FAILED_DONE_MARKER_ABSENT=FAIL'; exit 1; }
 record 'DRYRUN_FAILURE_MARKER=PASS'
 record 'DRYRUN_FAILED_DONE_MARKER_ABSENT=PASS'
