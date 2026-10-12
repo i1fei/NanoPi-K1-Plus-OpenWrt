@@ -50,10 +50,10 @@ record 'QEMU_AARCH64_BINFMT=PASS'
 sudo -n mkdir -p "$root/dev"
 sudo -n mount --bind /dev "$root/dev"
 mounted=1
-# OpenWrt creates /tmp/lock during early boot.  The extracted squashfs is
-# tested without init/procd, so create the runtime lock directory explicitly
-# before exercising UCI commits; /var/lock normally resolves here.
-sudo -n mkdir -p "$root/tmp/lock" "$root/tmp/sysinfo" "$root/sys/class/net/eth0"
+# OpenWrt creates the UCI lock directory during early boot.  The extracted
+# squashfs is tested without init/procd, so initialize both layouts explicitly:
+# current rootfs uses /var/lock, while older layouts may resolve it via /tmp.
+sudo -n mkdir -p "$root/var/lock" "$root/tmp/lock" "$root/tmp/sysinfo" "$root/sys/class/net/eth0"
 record 'DRYRUN_OPENWRT_RUNTIME_DIRS=PASS'
 printf '%s\n' friendlyelec,nanopi-k1-plus | sudo -n tee "$root/tmp/sysinfo/board_name" >/dev/null
 printf '%s\n' 02:11:22:33:44:55 | sudo -n tee "$root/sys/class/net/eth0/address" >/dev/null
