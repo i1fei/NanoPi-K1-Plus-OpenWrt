@@ -14,6 +14,18 @@ run_firstboot() {
 	sudo -n chroot "$root" /bin/sh -c '. /lib/functions/system.sh; . "$1"' sh "$script"
 }
 
+run_firstboot_checked() {
+	firstboot_log=$(mktemp)
+	if run_firstboot >"$firstboot_log" 2>&1; then
+		rm -f "$firstboot_log"
+		return 0
+	fi
+	# Preserve the reason in CI evidence, but never emit a generated credential.
+	sed -E 's/(Password: ).*/\1[redacted]/' "$firstboot_log" >> "$report"
+	rm -f "$firstboot_log"
+	return 1
+}
+
 cleanup() {
 	if [ "$mounted" -eq 1 ]; then
 		sudo -n umount "$root/dev" || true
@@ -53,7 +65,7 @@ for path in \
 	fi
 done
 
-if run_firstboot; then
+if run_firstboot_checked; then
 	record 'FIRSTBOOT_SUCCESS_RUN=PASS'
 else
 	record 'FIRSTBOOT_SUCCESS_RUN=FAIL'

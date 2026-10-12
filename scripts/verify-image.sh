@@ -260,6 +260,14 @@ verify_rtl8189es_image_module() {
 		trap - 0 1 2 15
 		return
 	fi
+	# unsquashfs preserves root ownership, while the remaining gates run as the
+	# runner user and the dry-run must write temporary UCI state into the image.
+	if ! sudo -n chown -R "$(id -u):$(id -g)" "$image_work/rootfs"; then
+		fail_full "ROOTFS_OWNERSHIP_NORMALIZE"
+		cleanup_image_work
+		trap - 0 1 2 15
+		return
+	fi
 
 	module_list="$image_work/modules.txt"
 	find "$image_work/rootfs/lib/modules" -type f -name rtl8189es.ko -print | sort > "$module_list"
