@@ -8,6 +8,11 @@ dhcp_pid=
 fallback_pid=/var/run/k1plus-fallback-dhcp.pid
 mode=BOOT
 
+[ -e /etc/wifi-release-done ] || {
+	logger -t "$tag" 'provisioning incomplete; network mode service is idle'
+	exit 0
+}
+
 log() {
 	logger -t "$tag" "$*"
 }

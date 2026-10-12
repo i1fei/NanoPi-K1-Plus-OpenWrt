@@ -245,22 +245,8 @@ verify_rtl8189es_image_module() {
 		return
 	fi
 	if [ "$PROFILE_KEY" = wifi_release_v1 ]; then
-		set -- \
-			'lib/modules/*/rtl8189es.ko' \
-			'etc/config/dhcp' \
-			'etc/config/k1plus_network' \
-			'etc/config/k1plus_watchdog' \
-			'etc/config/uhttpd' \
-			'etc/config/wireless' \
-			'etc/init.d/k1plus-hw-watchdog' \
-			'etc/init.d/k1plus-network' \
-			'etc/init.d/k1plus-wifi-watchdog' \
-			'etc/profile.d/99-k1-plus-wifi.sh' \
-			'etc/uci-defaults/99-k1-plus-wifi-release-v1' \
-			'usr/bin/arping' \
-			'usr/libexec/k1plus-dhcp-event' \
-			'usr/sbin/k1plus-network-mode' \
-			'usr/sbin/k1plus-wifi-watchdog'
+		# Release gates inspect and execute the complete final root filesystem.
+		set --
 	else
 		set -- 'lib/modules/*/rtl8189es.ko'
 	fi
@@ -366,6 +352,22 @@ verify_rtl8189es_image_module() {
 		else
 			cat "$ARTIFACT_DIR/wifi-release-v1-rootfs-validation.txt" >&2
 			fail_full "FINAL_IMAGE_WIFI_RELEASE_POLICY"
+		fi
+		if python3 ./scripts/check-release-script-commands.py "$image_work/rootfs" \
+			"$ARTIFACT_DIR/wifi-release-v1-command-dependencies.md"; then
+			record_full "FINAL_IMAGE_RELEASE_COMMAND_DEPENDENCIES=PASS"
+		else
+			[ ! -f "$ARTIFACT_DIR/wifi-release-v1-command-dependencies.md" ] || \
+				cat "$ARTIFACT_DIR/wifi-release-v1-command-dependencies.md" >&2
+			fail_full "FINAL_IMAGE_RELEASE_COMMAND_DEPENDENCIES"
+		fi
+		if ./scripts/dry-run-wifi-release-v1.sh "$image_work/rootfs" \
+			"$ARTIFACT_DIR/wifi-release-v1-firstboot-dry-run.txt"; then
+			record_full "FINAL_IMAGE_FIRSTBOOT_DRY_RUN=PASS"
+		else
+			[ ! -f "$ARTIFACT_DIR/wifi-release-v1-firstboot-dry-run.txt" ] || \
+				cat "$ARTIFACT_DIR/wifi-release-v1-firstboot-dry-run.txt" >&2
+			fail_full "FINAL_IMAGE_FIRSTBOOT_DRY_RUN"
 		fi
 	fi
 

@@ -77,6 +77,8 @@ reject_pattern etc/config/k1plus_network '169\\.254\\.' LINK_LOCAL_AUXILIARY_ABS
 
 policy=etc/uci-defaults/99-k1-plus-wifi-release-v1
 require_pattern "$policy" '/dev/urandom' RANDOM_CREDENTIAL_SOURCE
+require_pattern "$policy" "tr -dc 'A-Za-z0-9'.* /dev/urandom \\| head -c 12" RANDOM_CREDENTIAL_EXISTING_APPLETS
+reject_pattern "$policy" '(^|[[:space:]])base64([[:space:]]|$)' BASE64_DEPENDENCY_ABSENT
 require_pattern "$policy" 'passwd root' ROOT_CREDENTIAL_SET
 require_pattern "$policy" "option name 'br-lan'" BR_LAN_DEFINED
 require_pattern "$policy" "list ports 'eth0'" BR_LAN_ETH0_PORT
@@ -84,10 +86,15 @@ require_pattern "$policy" "option proto 'none'" LAN_ADDRESS_OWNED_BY_STATE_MACHI
 require_pattern "$policy" "set system\\.@system\\[0\\]\\.hostname='nanopi-k1plus'" HOSTNAME_FIXED
 require_pattern "$policy" "set wireless\\.default_radio0\\.network='lan'" WLAN_JOINS_BR_LAN
 require_pattern "$policy" "set dhcp\\.lan\\.ignore='1'" DEVICE_DHCP_DEFAULT_OFF
+require_pattern "$policy" 'FIRSTBOOT-FAILED\.txt' FIRSTBOOT_FAILURE_MARKER
+require_pattern "$policy" 'attempt.*-lt 3' FIRSTBOOT_RETRY_LIMIT
+require_pattern "$policy" 'exit 1' FIRSTBOOT_RETRY_RETAINS_SCRIPT
+require_pattern "$policy" 'retry limit reached' FIRSTBOOT_RETRY_EXHAUSTED_LOG
 reject_pattern "$policy" "option key '[^$]" HARDCODED_UCI_CREDENTIAL_ABSENT
 reject_pattern "$policy" '(^|[[:space:]])(wifi|hostapd)([[:space:]]|$)|/etc/init\\.d/[^[:space:]]+[[:space:]]+start' FIRSTBOOT_DEFERS_RUNTIME_START
 require_pattern etc/profile.d/99-k1-plus-wifi.sh '/tmp/current-ip' LOGIN_CURRENT_IP_HINT
 require_pattern etc/profile.d/99-k1-plus-wifi.sh 'serial console' LOGIN_SERIAL_RECOVERY_HINT
+require_pattern etc/profile.d/99-k1-plus-wifi.sh 'FIRSTBOOT-FAILED\.txt' LOGIN_FIRSTBOOT_FAILURE_WARNING
 
 mode=usr/sbin/k1plus-network-mode
 require_pattern "$mode" 'arping -D' DUPLICATE_ADDRESS_DETECTION
@@ -99,6 +106,9 @@ reject_pattern "$mode" '192\\.168\\.1\\.1|255\\.255\\.255\\.0' NETWORK_VALUES_NO
 reject_pattern "$mode" '(^|[[:space:]])(wifi|hostapd)([[:space:]]|$)' MODE_SWITCH_DOES_NOT_RESTART_WIFI
 
 watchdog=usr/sbin/k1plus-wifi-watchdog
+require_pattern usr/sbin/k1plus-network-mode '/etc/wifi-release-done' NETWORK_SERVICE_PROVISIONING_GATE
+require_pattern "$watchdog" '/etc/wifi-release-done' WIFI_WATCHDOG_PROVISIONING_GATE
+require_pattern etc/init.d/k1plus-hw-watchdog '/etc/wifi-release-done' HARDWARE_WATCHDOG_PROVISIONING_GATE
 require_pattern "$watchdog" 'wifi reload' WIFI_WATCHDOG_RELOAD_STAGE
 require_pattern "$watchdog" 'rmmod rtl8189es' WIFI_WATCHDOG_DRIVER_STAGE
 require_pattern "$watchdog" 'reboot' WIFI_WATCHDOG_REBOOT_STAGE

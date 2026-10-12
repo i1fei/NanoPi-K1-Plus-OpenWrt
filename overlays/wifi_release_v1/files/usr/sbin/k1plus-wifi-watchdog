@@ -6,6 +6,11 @@ tag=k1plus-wifi-watchdog
 failures=0
 stage=0
 
+[ -e /etc/wifi-release-done ] || {
+	logger -t "$tag" 'provisioning incomplete; WiFi recovery is disabled'
+	exit 0
+}
+
 config_load k1plus_watchdog
 config_get interval wifi interval
 config_get threshold wifi failure_threshold
