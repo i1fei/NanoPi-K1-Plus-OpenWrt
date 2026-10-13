@@ -345,8 +345,46 @@ jobs:
             cp -r .work/artifact/wifi-release-v1-dryrun-rootfs .work/failure/
           df -h > .work/failure/disk-space.txt
 
-      - name: Verify intentional dry-run failure is non-blocking
+      - name: Stage firmware artifact
         if: success()
+        run: |
+          set -eu
+          source_dir=.work/artifact
+          firmware_dir=.work/firmware-artifact
+          rm -rf "$firmware_dir"
+          mkdir -p "$firmware_dir"
+          for pattern in \
+            'NanoPi-K1-Plus-sunxi-cortexa53.img.gz' \
+            '*.img.gz' \
+            '*.dtb' \
+            '*.manifest' \
+            'VERSION.txt' \
+            'sha256sums' \
+            '*validation*.txt' \
+            '*validation*.md' \
+            '*policy' \
+            '*config' \
+            '*dependencies.md' \
+            'target-output-files.txt'; do
+            find "$source_dir" -maxdepth 1 -type f -name "$pattern" \
+              -exec cp -p {} "$firmware_dir/" \;
+          done
+          test -s "$firmware_dir/NanoPi-K1-Plus-sunxi-cortexa53.img.gz"
+          test -s "$firmware_dir/VERSION.txt"
+          chmod -R a+rX "$firmware_dir"
+
+      - name: Upload successful firmware
+        if: success()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: NanoPi-K1-Plus-OpenWrt
+          path: .work/firmware-artifact
+          if-no-files-found: error
+          include-hidden-files: true
+
+      - name: Verify intentional dry-run failure is non-blocking
+        if: always()
+        continue-on-error: true
         run: |
           set +e
           ./scripts/dry-run-wifi-release-v1.sh \
@@ -361,7 +399,8 @@ jobs:
           echo 'Intentional dry-run failure was observed without blocking the firmware upload path.' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Summarize firstboot dry-run status
-        if: success()
+        if: always()
+        continue-on-error: true
         run: |
           if grep -q '^DRY-RUN: FAILED' .work/artifact/VERSION.txt; then
             {
@@ -380,22 +419,66 @@ jobs:
             echo 'Firstboot dry run passed.' >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      - name: Upload successful firmware
-        if: success()
+      - name: Stage diagnostics
+        if: always()
+        continue-on-error: true
+        run: |
+          set +e
+          diagnostics=.work/diagnostics
+          rm -rf "$diagnostics"
+          mkdir -p "$diagnostics"
+
+          copy_if_present() {
+            source=$1
+            target=$2
+            [ -e "$source" ] || return 0
+            sudo -n cp -a "$source" "$target"
+          }
+
+          for file in \
+            wifi-release-v1-firstboot-dry-run.txt \
+            wifi-release-v1-dryrun-env.txt \
+            wifi-release-v1-command-dependencies.md \
+            wifi-release-v1-rootfs-validation.txt; do
+            copy_if_present ".work/artifact/$file" "$diagnostics/"
+          done
+          if [ -d .work/artifact/wifi-release-v1-dryrun-rootfs ]; then
+            sudo -n cp -a .work/artifact/wifi-release-v1-dryrun-rootfs "$diagnostics/"
+          fi
+          if [ -d .work/rtl8189es-diag-evidence ]; then
+            sudo -n cp -a .work/rtl8189es-diag-evidence "$diagnostics/"
+          fi
+
+          # Keep diagnostics readable without ever traversing virtual filesystems.
+          if [ -d "$diagnostics" ]; then
+            sudo -n find "$diagnostics" \
+              \( -path "$diagnostics/dev" -o -path "$diagnostics/proc" -o -path "$diagnostics/sys" \) -prune -o \
+              \( -iname '*password*' -o -iname '*passphrase*' -o -iname '*psk*' -o -iname '*secret*' \) -prune -o \
+              -exec chown "$(id -u):$(id -g)" {} +
+            sudo -n find "$diagnostics" \
+              \( -path "$diagnostics/dev" -o -path "$diagnostics/proc" -o -path "$diagnostics/sys" \) -prune -o \
+              \( -iname '*password*' -o -iname '*passphrase*' -o -iname '*psk*' -o -iname '*secret*' \) -prune -o \
+              -exec chmod a+rX {} +
+          fi
+
+      - name: Upload diagnostics
+        if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v7.0.1
         with:
-          name: NanoPi-K1-Plus-OpenWrt
-          path: .work/artifact
-          if-no-files-found: error
+          name: NanoPi-K1-Plus-diagnostics
+          path: .work/diagnostics
+          if-no-files-found: warn
           include-hidden-files: true
 
       - name: Upload RTL8189ES compile evidence
-        if: success()
+        if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v7.0.1
         with:
           name: rtl8189es-diag-evidence
           path: .work/rtl8189es-diag-evidence
-          if-no-files-found: error
+          if-no-files-found: warn
           include-hidden-files: true
 
       - name: Upload failure logs
