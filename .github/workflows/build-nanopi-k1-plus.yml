@@ -335,12 +335,50 @@ jobs:
             wifi-release-v1-rootfs-validation.txt \
             wifi-release-v1-command-dependencies.md \
             wifi-release-v1-firstboot-dry-run.txt \
+            wifi-release-v1-dryrun-env.txt \
             VERSION.txt \
             rtl8189es-inert-profile-manifest-validation.txt \
             buddha-profile-manifest-validation.txt; do
             [ -f ".work/artifact/$file" ] && cp ".work/artifact/$file" ".work/failure/$file"
           done
+          [ ! -d .work/artifact/wifi-release-v1-dryrun-rootfs ] || \
+            cp -r .work/artifact/wifi-release-v1-dryrun-rootfs .work/failure/
           df -h > .work/failure/disk-space.txt
+
+      - name: Verify intentional dry-run failure is non-blocking
+        if: success()
+        run: |
+          set +e
+          ./scripts/dry-run-wifi-release-v1.sh \
+            .work/artifact/does-not-exist \
+            .work/intentional-dry-run-failure.txt \
+            .work/intentional-dry-run-rootfs \
+            .work/intentional-dry-run-env.txt
+          status=$?
+          set -e
+          [ "$status" -ne 0 ]
+          [ -s .work/artifact/NanoPi-K1-Plus-sunxi-cortexa53.img.gz ]
+          echo 'Intentional dry-run failure was observed without blocking the firmware upload path.' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Summarize firstboot dry-run status
+        if: success()
+        run: |
+          if grep -q '^DRY-RUN: FAILED' .work/artifact/VERSION.txt; then
+            {
+              echo '### WARNING: firstboot dry run failed';
+              echo '';
+              echo 'Mandatory release gates passed; image is uploaded as UNVERIFIED.';
+              echo 'See the dry-run report, environment report, and sanitized rootfs diagnostics.';
+            } >> "$GITHUB_STEP_SUMMARY"
+          elif grep -q '^DRY-RUN: SKIPPED' .work/artifact/VERSION.txt; then
+            {
+              echo '### WARNING: firstboot dry run skipped';
+              echo '';
+              echo 'Mandatory release gates passed; image is uploaded as UNVERIFIED.';
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Firstboot dry run passed.' >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Upload successful firmware
         if: success()

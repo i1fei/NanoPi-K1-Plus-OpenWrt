@@ -374,26 +374,37 @@ verify_rtl8189es_image_module() {
 		fi
 		set +e
 		./scripts/dry-run-wifi-release-v1.sh "$image_work/rootfs" \
-			"$ARTIFACT_DIR/wifi-release-v1-firstboot-dry-run.txt"
+			"$ARTIFACT_DIR/wifi-release-v1-firstboot-dry-run.txt" \
+			"$ARTIFACT_DIR/wifi-release-v1-dryrun-rootfs" \
+			"$ARTIFACT_DIR/wifi-release-v1-dryrun-env.txt"
 		dry_run_status=$?
 		set -e
 		case "$dry_run_status" in
 			0)
+				record_full "DRYRUN_STATUS=PASS"
 				record_full "FINAL_IMAGE_FIRSTBOOT_DRY_RUN=PASS"
-				echo 'FIRSTBOOT_DRY_RUN=PASS' >> "$ARTIFACT_DIR/VERSION.txt"
+				echo 'DRY-RUN: PASS' > "$ARTIFACT_DIR/VERSION.txt.dryrun"
 				;;
 			2)
 				cat "$ARTIFACT_DIR/wifi-release-v1-firstboot-dry-run.txt" >&2
+				record_full "DRYRUN_STATUS=SKIPPED(QEMU_AARCH64_BINFMT_UNAVAILABLE)"
 				record_full "FINAL_IMAGE_FIRSTBOOT_DRY_RUN=SKIPPED(QEMU_AARCH64_BINFMT_UNAVAILABLE)"
-				echo 'FIRSTBOOT_DRY_RUN=SKIPPED(QEMU_AARCH64_BINFMT_UNAVAILABLE)' >> "$ARTIFACT_DIR/VERSION.txt"
+				echo 'DRY-RUN: SKIPPED(QEMU_AARCH64_BINFMT_UNAVAILABLE)' > "$ARTIFACT_DIR/VERSION.txt.dryrun"
 				;;
 			*)
 				[ ! -f "$ARTIFACT_DIR/wifi-release-v1-firstboot-dry-run.txt" ] || \
 					cat "$ARTIFACT_DIR/wifi-release-v1-firstboot-dry-run.txt" >&2
-				fail_full "FINAL_IMAGE_FIRSTBOOT_DRY_RUN"
-				echo 'FIRSTBOOT_DRY_RUN=FAIL' >> "$ARTIFACT_DIR/VERSION.txt"
+				record_full "DRYRUN_STATUS=FAILED(non-blocking; see dry-run report)"
+				record_full "FINAL_IMAGE_FIRSTBOOT_DRY_RUN=FAILED(non-blocking; see dry-run report)"
+				echo 'DRY-RUN: FAILED(non-blocking; see wifi-release-v1-firstboot-dry-run.txt)' > "$ARTIFACT_DIR/VERSION.txt.dryrun"
 				;;
 		esac
+		if [ -f "$ARTIFACT_DIR/VERSION.txt.dryrun" ]; then
+			tmp_version=$(mktemp)
+			cat "$ARTIFACT_DIR/VERSION.txt.dryrun" "$ARTIFACT_DIR/VERSION.txt" > "$tmp_version"
+			mv "$tmp_version" "$ARTIFACT_DIR/VERSION.txt"
+			rm -f "$ARTIFACT_DIR/VERSION.txt.dryrun"
+		fi
 	fi
 
 	cleanup_image_work

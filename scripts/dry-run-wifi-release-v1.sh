@@ -4,6 +4,8 @@ set -eu
 root=${1:?rootfs is required}
 report=${2:?report path is required}
 script=/etc/uci-defaults/99-k1-plus-wifi-release-v1
+diagnostic_dir=${3:-${report%.*}-rootfs}
+env_report=${4:-${report%.*}-env.txt}
 mounted=0
 
 record() {
@@ -14,14 +16,60 @@ run_firstboot() {
 	sudo -n chroot "$root" /bin/sh -c '. /lib/functions/system.sh; . "$1"' sh "$script"
 }
 
+capture_chroot_state() {
+	phase=$1
+	{
+		printf '\n=== CHROOT_STATE_%s ===\n' "$phase"
+		printf '%s\n' '-- id --'
+		sudo -n chroot "$root" id 2>&1 || true
+		printf '%s\n' '-- env (uci) --'
+		sudo -n chroot "$root" /bin/sh -c 'env | grep -i uci || true' 2>&1 || true
+		printf '%s\n' '-- directories --'
+		sudo -n chroot "$root" /bin/sh -c \
+			'ls -lad /etc/config /tmp/.uci /var/lock /var/run 2>&1 || true' 2>&1 || true
+		printf '%s\n' '-- system config --'
+		sudo -n chroot "$root" /bin/sh -c \
+			'ls -l /etc/config/system 2>&1; sed -n "1,160p" /etc/config/system 2>&1' 2>&1 || true
+		printf '%s\n' '-- uci show system (UCI_DEBUG=1) --'
+		sudo -n chroot "$root" /bin/sh -c 'UCI_DEBUG=1 uci show system' 2>&1 || true
+	} >> "$report"
+}
+
+copy_diagnostic_files() {
+	sudo -n mkdir -p "$diagnostic_dir/etc-config" "$diagnostic_dir/etc-uci-defaults" || true
+	for pair in \
+		"/etc/config:$diagnostic_dir/etc-config" \
+		"/etc/uci-defaults:$diagnostic_dir/etc-uci-defaults"; do
+		source=${pair%%:*}
+		target=${pair#*:}
+		for file in $(sudo -n find "$root$source" -maxdepth 1 -type f \
+			! -iname '*password*' ! -iname '*passphrase*' ! -iname '*secret*' -print 2>/dev/null); do
+			name=$(basename "$file")
+			sudo -n cp "$file" "$target/$name" 2>/dev/null || true
+			sudo -n sed -Ei \
+				's/^([[:space:]]*(option|list)[[:space:]]+(key|password|passphrase|psk)[[:space:]]+).*/\1[redacted]/' \
+				"$target/$name" 2>/dev/null || true
+		done
+	done
+}
+
 run_firstboot_checked() {
 	firstboot_log=$(mktemp)
+	capture_chroot_state BEFORE_FIRSTBOOT
 	if run_firstboot >"$firstboot_log" 2>&1; then
+		printf 'FIRSTBOOT_EXIT=0\n' >> "$report"
+		cat "$firstboot_log" >> "$report"
+		capture_chroot_state AFTER_FIRSTBOOT_SUCCESS
+		copy_diagnostic_files
 		rm -f "$firstboot_log"
 		return 0
 	fi
+	status=$?
+	printf 'FIRSTBOOT_EXIT=%s\n' "$status" >> "$report"
 	# Preserve the reason in CI evidence, but never emit a generated credential.
 	sed -E 's/(Password: ).*/\1[redacted]/' "$firstboot_log" >> "$report"
+	capture_chroot_state AFTER_FIRSTBOOT_FAILURE
+	copy_diagnostic_files
 	if sudo -n test -f "$root/root/FIRSTBOOT-FAILED.txt"; then
 		record 'FIRSTBOOT_FAILURE_MARKER_BEGIN'
 		sudo -n sed -E 's/(Password: ).*/\1[redacted]/' \
@@ -41,6 +89,17 @@ trap cleanup EXIT INT HUP TERM
 : > "$report"
 
 [ -x "$root$script" ] || { record 'FIRSTBOOT_SCRIPT=FAIL'; exit 1; }
+
+{
+	printf 'QEMU_AARCH64_BINFMT='; cat /proc/sys/fs/binfmt_misc/qemu-aarch64 2>&1 || true
+	printf 'QEMU_BINARY='; command -v qemu-aarch64-static 2>&1 || true
+	qemu-aarch64-static --version 2>&1 || true
+	printf 'CHROOT=%s\n' "$root"
+	id 2>&1 || true
+	uname -a 2>&1 || true
+	mount 2>&1 || true
+} > "$env_report" 2>&1 || true
+
 [ -e /proc/sys/fs/binfmt_misc/qemu-aarch64 ] || {
 	record 'QEMU_AARCH64_BINFMT=SKIPPED(environment unavailable)'
 	exit 2
@@ -53,7 +112,8 @@ mounted=1
 # OpenWrt creates the UCI lock directory during early boot.  The extracted
 # squashfs is tested without init/procd, so initialize both layouts explicitly:
 # current rootfs uses /var/lock, while older layouts may resolve it via /tmp.
-sudo -n mkdir -p "$root/var/lock" "$root/tmp/lock" "$root/tmp/sysinfo" "$root/sys/class/net/eth0"
+sudo -n mkdir -p "$root/var/lock" "$root/tmp/lock" "$root/tmp/.uci" "$root/tmp/sysinfo" "$root/sys/class/net/eth0"
+sudo -n chmod 1777 "$root/var/lock" "$root/tmp/lock" "$root/tmp/.uci"
 record 'DRYRUN_OPENWRT_RUNTIME_DIRS=PASS'
 printf '%s\n' friendlyelec,nanopi-k1-plus | sudo -n tee "$root/tmp/sysinfo/board_name" >/dev/null
 printf '%s\n' 02:11:22:33:44:55 | sudo -n tee "$root/sys/class/net/eth0/address" >/dev/null
