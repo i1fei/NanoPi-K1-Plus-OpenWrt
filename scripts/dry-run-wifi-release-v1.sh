@@ -51,6 +51,9 @@ copy_diagnostic_files() {
 				"$target/$name" 2>/dev/null || true
 		done
 	done
+	# The files are copied with sudo so rootfs permissions cannot block artifact upload.
+	sudo -n chown -R "$(id -u):$(id -g)" "$diagnostic_dir" 2>/dev/null ||
+		sudo -n chmod -R a+rX "$diagnostic_dir" 2>/dev/null || true
 }
 
 run_firstboot_checked() {
