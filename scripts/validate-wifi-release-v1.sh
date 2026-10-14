@@ -25,6 +25,10 @@ require_pattern() {
 	grep -Eq "$2" "$root/$1" && pass "$3" || fail "$3"
 }
 
+require_literal() {
+	grep -Fq "$2" "$root/$1" && pass "$3" || fail "$3"
+}
+
 reject_pattern() {
 	if grep -Eq "$2" "$root/$1"; then fail "$3"; else pass "$3"; fi
 }
@@ -84,7 +88,7 @@ require_pattern "$policy" "option name 'br-lan'" BR_LAN_DEFINED
 require_pattern "$policy" "list ports 'eth0'" BR_LAN_ETH0_PORT
 require_pattern "$policy" "option proto 'none'" LAN_ADDRESS_OWNED_BY_STATE_MACHINE
 require_pattern "$policy" "set system\\.@system\\[0\\]\\.hostname='nanopi-k1plus'" HOSTNAME_FIXED
-require_pattern "$policy" "set \$iface_section\\.network='lan'" WLAN_JOINS_BR_LAN
+require_literal "$policy" "set \$iface_section.network='lan'" WLAN_JOINS_BR_LAN
 require_pattern "$policy" "set dhcp\\.lan\\.ignore='1'" DEVICE_DHCP_DEFAULT_OFF
 require_pattern "$policy" 'FIRSTBOOT-FAILED\.txt' FIRSTBOOT_FAILURE_MARKER
 require_pattern "$policy" 'attempt.*-lt 3' FIRSTBOOT_RETRY_LIMIT
@@ -110,6 +114,7 @@ require_pattern usr/sbin/k1plus-network-mode '/etc/wifi-release-done' NETWORK_SE
 require_pattern "$watchdog" '/etc/wifi-release-done' WIFI_WATCHDOG_PROVISIONING_GATE
 require_pattern etc/init.d/k1plus-hw-watchdog '/etc/wifi-release-done' HARDWARE_WATCHDOG_PROVISIONING_GATE
 require_pattern "$watchdog" 'wifi reload' WIFI_WATCHDOG_RELOAD_STAGE
+require_pattern "$watchdog" 'ubus call network\\.wireless status' WIFI_WATCHDOG_NETIFD_STATUS
 require_pattern "$watchdog" 'administrator_disabled' WIFI_WATCHDOG_ADMIN_DISABLED_GUARD
 require_pattern "$watchdog" 'reload_grace' WIFI_WATCHDOG_RELOAD_GRACE
 require_pattern "$watchdog" 'WATCHDOG-DISABLED.txt' WIFI_WATCHDOG_LOOP_GUARD

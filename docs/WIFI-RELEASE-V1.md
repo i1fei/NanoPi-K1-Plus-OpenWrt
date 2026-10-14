@@ -36,6 +36,11 @@ The hardware watchdog is driven by procd with a 30-second timeout and a
 
 Known limitation: on the tested RTL8189ES stack, manual `wifi down` followed by
 `wifi up` is not reliable and may leave the kernel AP interface and netifd's
-UBus state out of sync. The X validation reproduced this in 5/5 rounds. Use
-`wifi reload` or a normal reboot instead; this path is excluded from automatic
-watchdog recovery.
+UBus state out of sync. The W validation reproduced that state in 5/5 rounds;
+in those captured failures, `wifi reload` returned success but did not restore
+the AP and UBus state. No non-reboot recovery path has been validated, and the
+cause is not fully confirmed. Use a normal reboot for that condition; the
+watchdog checks both kernel and netifd state, records the failed reload, then
+escalates to driver reload and finally a normal reboot. Later six D samples
+from a healthy baseline completed successfully, so the failure is not claimed
+to be deterministic.

@@ -29,13 +29,24 @@ for value in "$interval" "$threshold" "$command_timeout" "$reload_grace" "$recov
 	case "$value" in ''|*[!0-9]*) logger -t "$tag" 'invalid watchdog configuration'; exit 1;; esac
 done
 
-healthy() {
-	pidof hostapd >/dev/null 2>&1 || return 1
+kernel_ap_healthy() {
 	ap_interface=$(iw dev 2>/dev/null | awk '
 		/^Interface / { name=$2 }
 		/^[[:space:]]*type AP$/ { if (name != "") { print name; exit } }')
 	[ -n "$ap_interface" ] || return 1
 	iw dev "$ap_interface" info 2>/dev/null | grep -q '^[[:space:]]*type AP$'
+}
+
+netifd_ap_healthy() {
+	status=$(ubus call network.wireless status 2>/dev/null) || return 1
+	printf '%s\n' "$status" | grep -q '"up"[[:space:]]*:[[:space:]]*true' || return 1
+	printf '%s\n' "$status" | grep -q '"ifname"[[:space:]]*:'
+}
+
+healthy() {
+	pidof hostapd >/dev/null 2>&1 || return 1
+	kernel_ap_healthy || return 1
+	netifd_ap_healthy
 }
 
 administrator_disabled() {
@@ -118,6 +129,12 @@ while :; do
 			[ "$result" -eq 124 ] && reboot_after_timeout
 			logger -t "$tag" "waiting ${reload_grace}s after wifi reload"
 			sleep "$reload_grace"
+			if healthy; then
+				logger -t "$tag" 'wifi reload restored kernel AP, hostapd, and netifd UBus state'
+				stage=0
+				continue
+			fi
+			logger -t "$tag" 'wifi reload did not restore kernel AP and netifd UBus state; no validated non-driver recovery path is available'
 			stage=1
 			;;
 		1)
@@ -127,6 +144,14 @@ while :; do
 			result=$?
 			[ "$result" -eq 124 ] && reboot_after_timeout
 			[ "$result" -eq 0 ] || logger -t "$tag" 'driver reload failed'
+			logger -t "$tag" "waiting ${reload_grace}s after driver reload"
+			sleep "$reload_grace"
+			if healthy; then
+				logger -t "$tag" 'driver reload restored kernel AP, hostapd, and netifd UBus state'
+				stage=0
+				continue
+			fi
+			logger -t "$tag" 'driver reload did not restore kernel AP and netifd UBus state'
 			stage=2
 			;;
 		*)
