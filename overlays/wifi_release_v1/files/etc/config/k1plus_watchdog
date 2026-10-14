@@ -1,7 +1,10 @@
 config watchdog 'wifi'
 	option interval '30'
-	option failure_threshold '3'
+	option failure_threshold '5'
 	option command_timeout '25'
+	option reload_grace '60'
+	option recovery_window '3600'
+	option max_recoveries '3'
 
 config watchdog 'hardware'
 	option timeout '30'

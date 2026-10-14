@@ -5,9 +5,16 @@
 tag=k1plus-wifi-watchdog
 failures=0
 stage=0
+last_recovery=0
+recovery_count=0
 
 [ -e /etc/wifi-release-done ] || {
 	logger -t "$tag" 'provisioning incomplete; WiFi recovery is disabled'
+	exit 0
+}
+
+[ -e /root/WATCHDOG-DISABLED.txt ] && {
+	logger -t "$tag" 'automatic recovery disabled by watchdog limit'
 	exit 0
 }
 
@@ -15,13 +22,39 @@ config_load k1plus_watchdog
 config_get interval wifi interval
 config_get threshold wifi failure_threshold
 config_get command_timeout wifi command_timeout
-for value in "$interval" "$threshold" "$command_timeout"; do
+config_get reload_grace wifi reload_grace
+config_get recovery_window wifi recovery_window
+config_get max_recoveries wifi max_recoveries
+for value in "$interval" "$threshold" "$command_timeout" "$reload_grace" "$recovery_window" "$max_recoveries"; do
 	case "$value" in ''|*[!0-9]*) logger -t "$tag" 'invalid watchdog configuration'; exit 1;; esac
 done
 
 healthy() {
 	pidof hostapd >/dev/null 2>&1 || return 1
-	iw dev wlan0 info 2>/dev/null | grep -q '^[[:space:]]*type AP$'
+	ap_interface=$(iw dev 2>/dev/null | awk '
+		/^Interface / { name=$2 }
+		/^[[:space:]]*type AP$/ { if (name != "") { print name; exit } }')
+	[ -n "$ap_interface" ] || return 1
+	iw dev "$ap_interface" info 2>/dev/null | grep -q '^[[:space:]]*type AP$'
+}
+
+administrator_disabled() {
+	uci show wireless 2>/dev/null | grep -q "\.disabled='1'$"
+}
+
+allow_recovery() {
+	now=$(date +%s)
+	if [ "$last_recovery" -eq 0 ] || [ "$now" -ge $((last_recovery + recovery_window)) ]; then
+		recovery_count=0
+	fi
+	recovery_count=$((recovery_count + 1))
+	last_recovery=$now
+	if [ "$recovery_count" -gt "$max_recoveries" ]; then
+		logger -t "$tag" "recovery limit exceeded (${max_recoveries}/${recovery_window}s); automatic recovery disabled"
+		printf '%s\n' 'Automatic WiFi recovery disabled after repeated escalations.' > /root/WATCHDOG-DISABLED.txt
+		return 1
+	fi
+	return 0
 }
 
 run_bounded() {
@@ -47,20 +80,23 @@ reboot_after_timeout() {
 }
 
 reload_driver() {
-	run_bounded wifi down
-	result=$?
-	[ "$result" -eq 0 ] || return "$result"
 	run_bounded /sbin/kmodloader -r rtl8189es
 	result=$?
 	[ "$result" -eq 0 ] || return "$result"
 	run_bounded /sbin/kmodloader rtl8189es
 	result=$?
 	[ "$result" -eq 0 ] || return "$result"
-	run_bounded wifi up
+	run_bounded wifi reload
 }
 
 while :; do
 	sleep "$interval"
+	if administrator_disabled; then
+		[ "$failures" -eq 0 ] || logger -t "$tag" 'administrator disabled wireless; recovery suppressed'
+		failures=0
+		stage=0
+		continue
+	fi
 	if healthy; then
 		[ "$failures" -eq 0 ] || logger -t "$tag" 'health recovered'
 		failures=0
@@ -75,13 +111,17 @@ while :; do
 
 	case "$stage" in
 		0)
+			allow_recovery || exit 0
 			logger -t "$tag" 'recovery stage 1: wifi reload'
 			run_bounded wifi reload
 			result=$?
 			[ "$result" -eq 124 ] && reboot_after_timeout
+			logger -t "$tag" "waiting ${reload_grace}s after wifi reload"
+			sleep "$reload_grace"
 			stage=1
 			;;
 		1)
+			allow_recovery || exit 0
 			logger -t "$tag" 'recovery stage 2: driver reload'
 			reload_driver
 			result=$?
@@ -90,6 +130,7 @@ while :; do
 			stage=2
 			;;
 		*)
+			allow_recovery || exit 0
 			logger -t "$tag" 'recovery stage 3: reboot'
 			sync
 			reboot

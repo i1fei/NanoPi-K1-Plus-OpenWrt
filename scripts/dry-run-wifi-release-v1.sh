@@ -153,7 +153,7 @@ for check in \
 	"dhcp.lan.ignore=1" \
 	"wireless.default_radio0.network=lan" \
 	"wireless.default_radio0.mode=ap" \
-	"wireless.default_radio0.disabled=0"; do
+	"wireless.default_radio0.disabled="; do
 	key=${check%%=*}
 	expected=${check#*=}
 	actual=$(sudo -n chroot "$root" /sbin/uci -q get "$key")
@@ -164,6 +164,10 @@ for check in \
 		exit 1
 	fi
 done
+
+disabled_count=$(sudo -n chroot "$root" /bin/sh -c "uci show wireless | grep -c \"disabled='1'\" || true")
+[ "$disabled_count" -eq 0 ] || { record 'DRYRUN_WIRELESS_DISABLED_SECTIONS=FAIL'; exit 1; }
+record 'DRYRUN_WIRELESS_DISABLED_SECTIONS=PASS'
 
 [ -e "$root/etc/wifi-release-done" ] || { record 'DRYRUN_DONE_MARKER=FAIL'; exit 1; }
 if sudo -n test -e "$root/root/FIRSTBOOT-FAILED.txt"; then

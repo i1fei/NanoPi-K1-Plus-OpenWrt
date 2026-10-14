@@ -84,7 +84,7 @@ require_pattern "$policy" "option name 'br-lan'" BR_LAN_DEFINED
 require_pattern "$policy" "list ports 'eth0'" BR_LAN_ETH0_PORT
 require_pattern "$policy" "option proto 'none'" LAN_ADDRESS_OWNED_BY_STATE_MACHINE
 require_pattern "$policy" "set system\\.@system\\[0\\]\\.hostname='nanopi-k1plus'" HOSTNAME_FIXED
-require_pattern "$policy" "set wireless\\.default_radio0\\.network='lan'" WLAN_JOINS_BR_LAN
+require_pattern "$policy" "set \$iface_section\\.network='lan'" WLAN_JOINS_BR_LAN
 require_pattern "$policy" "set dhcp\\.lan\\.ignore='1'" DEVICE_DHCP_DEFAULT_OFF
 require_pattern "$policy" 'FIRSTBOOT-FAILED\.txt' FIRSTBOOT_FAILURE_MARKER
 require_pattern "$policy" 'attempt.*-lt 3' FIRSTBOOT_RETRY_LIMIT
@@ -110,6 +110,23 @@ require_pattern usr/sbin/k1plus-network-mode '/etc/wifi-release-done' NETWORK_SE
 require_pattern "$watchdog" '/etc/wifi-release-done' WIFI_WATCHDOG_PROVISIONING_GATE
 require_pattern etc/init.d/k1plus-hw-watchdog '/etc/wifi-release-done' HARDWARE_WATCHDOG_PROVISIONING_GATE
 require_pattern "$watchdog" 'wifi reload' WIFI_WATCHDOG_RELOAD_STAGE
+require_pattern "$watchdog" 'administrator_disabled' WIFI_WATCHDOG_ADMIN_DISABLED_GUARD
+require_pattern "$watchdog" 'reload_grace' WIFI_WATCHDOG_RELOAD_GRACE
+require_pattern "$watchdog" 'WATCHDOG-DISABLED.txt' WIFI_WATCHDOG_LOOP_GUARD
+reject_pattern "$watchdog" '(^|[[:space:]])wifi[[:space:]]+(down|up)([[:space:]]|$)' WIFI_WATCHDOG_NO_DOWN_UP
+reject_pattern "$watchdog" 'wlan0|wlan1' WIFI_WATCHDOG_DYNAMIC_INTERFACE
+reject_pattern usr/sbin/k1plus-network-mode 'wlan0|wlan1' NETWORK_MODE_DYNAMIC_INTERFACE
+runtime_interface_matches=$(grep -REn 'wlan0|wlan1' \
+	"$root/etc/uci-defaults" "$root/etc/init.d" "$root/usr/libexec" "$root/usr/sbin" || true)
+if [ -n "$runtime_interface_matches" ]; then
+	fail WIFI_RELEASE_RUNTIME_HARDCODED_INTERFACE
+else
+	pass WIFI_RELEASE_RUNTIME_HARDCODED_INTERFACE
+fi
+require_pattern etc/config/k1plus_watchdog "^[[:space:]]*option failure_threshold '5'$" WIFI_WATCHDOG_THRESHOLD
+require_pattern etc/config/k1plus_watchdog "^[[:space:]]*option reload_grace '60'$" WIFI_WATCHDOG_RELOAD_GRACE_CONFIG
+require_pattern etc/config/k1plus_watchdog "^[[:space:]]*option recovery_window '3600'$" WIFI_WATCHDOG_RECOVERY_WINDOW
+require_pattern etc/config/k1plus_watchdog "^[[:space:]]*option max_recoveries '3'$" WIFI_WATCHDOG_MAX_RECOVERIES
 require_pattern "$watchdog" '/sbin/kmodloader -r rtl8189es' WIFI_WATCHDOG_DRIVER_UNLOAD
 require_pattern "$watchdog" '/sbin/kmodloader rtl8189es' WIFI_WATCHDOG_DRIVER_LOAD
 require_pattern "$watchdog" 'reboot' WIFI_WATCHDOG_REBOOT_STAGE

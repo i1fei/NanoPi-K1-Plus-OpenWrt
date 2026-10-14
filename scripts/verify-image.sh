@@ -799,6 +799,11 @@ verify_wifi_release_v1_profile() {
 	done
 	require_grep "$ARTIFACT_DIR/VERSION.txt" '^STATUS=UNVERIFIED$' "WIFI_RELEASE_UNVERIFIED"
 	require_grep "$ARTIFACT_DIR/k1-plus-wireless-config" "^[[:space:]]*option network 'lan'$" "WIRELESS_CONFIG_NETWORK_LAN"
+	if grep -Eq '(^|[[:space:]])wifi[[:space:]]+(down|up)([[:space:]]|$)' "$ARTIFACT_DIR/k1plus-wifi-watchdog"; then
+		fail_full "WIFI_WATCHDOG_NO_DOWN_UP"
+	else
+		record_full "WIFI_WATCHDOG_NO_DOWN_UP=PASS"
+	fi
 	require_grep "$ARTIFACT_DIR/k1plus-network-config" "^[[:space:]]*option dhcp_timeout '90'$" "NETWORK_MODE_TIMEOUT"
 	require_grep "$ARTIFACT_DIR/k1plus-network-config" "^[[:space:]]*option probe_interval '30'$" "NETWORK_MODE_PROBE_INTERVAL"
 	require_grep "$ARTIFACT_DIR/k1plus-watchdog-config" "^[[:space:]]*option timeout '30'$" "HARDWARE_WATCHDOG_TIMEOUT"

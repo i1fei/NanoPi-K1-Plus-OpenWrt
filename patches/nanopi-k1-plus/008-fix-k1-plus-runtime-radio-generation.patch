@@ -16,18 +16,19 @@ first boot so the wired LAN path can settle before rtl8189es is asked to start
 hostapd.
 
 ---
- .../network/config/wifi-scripts/files/lib/wifi/mac80211.uc | 20 +++++++++++++++++++-
- 1 file changed, 19 insertions(+), 1 deletion(-)
+ .../network/config/wifi-scripts/files/lib/wifi/mac80211.uc | 21 ++++++++++++++++++++-
+ 1 file changed, 20 insertions(+), 1 deletion(-)
 
 diff --git a/package/network/config/wifi-scripts/files/lib/wifi/mac80211.uc b/package/network/config/wifi-scripts/files/lib/wifi/mac80211.uc
 index fa45ff3d5d..e88b05cc5b 100644
 --- a/package/network/config/wifi-scripts/files/lib/wifi/mac80211.uc
 +++ b/package/network/config/wifi-scripts/files/lib/wifi/mac80211.uc
-@@ -9,11 +9,27 @@ let board = json(readfile("/etc/board.json"));
+@@ -9,11 +9,28 @@ let board = json(readfile("/etc/board.json"));
  if (!board.wlan)
  	exit(0);
  
 +let is_k1_plus = board.model && board.model.id == "friendlyelec,nanopi-k1-plus";
++let k1_release_provisioned = !!readfile("/etc/wifi-release-done");
  let idx = 0;
  let commit;
 +let k1_radio_seen = false;
@@ -73,7 +74,7 @@ index fa45ff3d5d..e88b05cc5b 100644
  set ${si}.encryption='${defaults?.encryption || encryption}'
  set ${si}.key='${defaults?.key || ""}'
 -set ${si}.disabled='0'
-+set ${si}.disabled='${defaults?.disabled || (is_k1_plus ? "1" : "0")}'
++set ${si}.disabled='${defaults?.disabled || (is_k1_plus && !k1_release_provisioned ? "1" : "0")}'
  
  `);
 +		if (is_k1_plus)
