@@ -5,6 +5,7 @@ config watchdog 'wifi'
 	option reload_grace '60'
 	option recovery_window '3600'
 	option max_recoveries '3'
+	option reboot_cooldown '3600'
 
 config watchdog 'hardware'
 	option timeout '30'

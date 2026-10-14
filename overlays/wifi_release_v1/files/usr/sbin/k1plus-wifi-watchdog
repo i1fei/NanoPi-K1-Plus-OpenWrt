@@ -25,7 +25,8 @@ config_get command_timeout wifi command_timeout
 config_get reload_grace wifi reload_grace
 config_get recovery_window wifi recovery_window
 config_get max_recoveries wifi max_recoveries
-for value in "$interval" "$threshold" "$command_timeout" "$reload_grace" "$recovery_window" "$max_recoveries"; do
+config_get reboot_cooldown wifi reboot_cooldown
+for value in "$interval" "$threshold" "$command_timeout" "$reload_grace" "$recovery_window" "$max_recoveries" "$reboot_cooldown"; do
 	case "$value" in ''|*[!0-9]*) logger -t "$tag" 'invalid watchdog configuration'; exit 1;; esac
 done
 
@@ -88,6 +89,23 @@ reboot_after_timeout() {
 	sync
 	reboot
 	exit 0
+}
+
+allow_reboot() {
+	stamp_file=/etc/k1plus-watchdog-last-reboot
+	now=$(date +%s)
+	last=$(cat "$stamp_file" 2>/dev/null || echo 0)
+	case "$last" in ''|*[!0-9]*) last=0;; esac
+	if [ "$last" -gt 0 ] && [ "$now" -lt $((last + reboot_cooldown)) ]; then
+		logger -t "$tag" "reboot cooldown active; refusing watchdog reboot for $((last + reboot_cooldown - now))s"
+		printf '%s\n' 'Automatic watchdog reboot is rate-limited to once per hour.' > /root/WATCHDOG-DISABLED.txt
+		return 1
+	fi
+	printf '%s\n' "$now" > "$stamp_file" || {
+		logger -t "$tag" 'could not persist watchdog reboot timestamp; refusing reboot'
+		return 1
+	}
+	return 0
 }
 
 reload_driver() {
@@ -156,6 +174,7 @@ while :; do
 			;;
 		*)
 			allow_recovery || exit 0
+			allow_reboot || exit 0
 			logger -t "$tag" 'recovery stage 3: reboot'
 			sync
 			reboot
