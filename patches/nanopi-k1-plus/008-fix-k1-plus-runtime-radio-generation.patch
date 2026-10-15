@@ -28,7 +28,9 @@ index fa45ff3d5d..e88b05cc5b 100644
  	exit(0);
  
 +let is_k1_plus = board.model && board.model.id == "friendlyelec,nanopi-k1-plus";
-+let k1_release_provisioned = !!readfile("/etc/wifi-release-done");
++let k1_release_provisioned = readfile("/etc/wifi-release-done") != null;
++if (is_k1_plus && k1_release_provisioned)
++	print("k1plus: release provisioned; preserving enabled wireless policy\n");
  let idx = 0;
  let commit;
 +let k1_radio_seen = false;

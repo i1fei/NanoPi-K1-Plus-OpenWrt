@@ -170,6 +170,10 @@ disabled_count=$(sudo -n chroot "$root" /bin/sh -c "uci show wireless | grep -c 
 record 'DRYRUN_WIRELESS_DISABLED_SECTIONS=PASS'
 
 [ -e "$root/etc/wifi-release-done" ] || { record 'DRYRUN_DONE_MARKER=FAIL'; exit 1; }
+[ "$(sudo -n cat "$root/etc/wifi-release-done")" = done ] || {
+	record 'DRYRUN_DONE_MARKER_CONTENT=FAIL'
+	exit 1
+}
 if sudo -n test -e "$root/root/FIRSTBOOT-FAILED.txt"; then
 	record 'DRYRUN_FAILURE_MARKER_ABSENT=FAIL'
 	exit 1
@@ -179,6 +183,7 @@ sudo -n chroot "$root" /usr/bin/awk -F ': ' \
 	'/^Password:/ { valid = (length($2) == 12) } END { exit !valid }' \
 	/root/WIFI-PASSWORD.txt || { record 'DRYRUN_CREDENTIAL_LENGTH=FAIL'; exit 1; }
 record 'DRYRUN_DONE_MARKER=PASS'
+record 'DRYRUN_DONE_MARKER_CONTENT=PASS'
 record 'DRYRUN_FAILURE_MARKER_ABSENT=PASS'
 record 'DRYRUN_CREDENTIAL_MODE=PASS'
 record 'DRYRUN_CREDENTIAL_LENGTH=PASS'

@@ -121,6 +121,16 @@ require_pattern "$watchdog" 'WATCHDOG-DISABLED.txt' WIFI_WATCHDOG_LOOP_GUARD
 reject_pattern "$watchdog" '(^|[[:space:]])wifi[[:space:]]+(down|up)([[:space:]]|$)' WIFI_WATCHDOG_NO_DOWN_UP
 reject_pattern "$watchdog" 'wlan0|wlan1' WIFI_WATCHDOG_DYNAMIC_INTERFACE
 reject_pattern usr/sbin/k1plus-network-mode 'wlan0|wlan1' NETWORK_MODE_DYNAMIC_INTERFACE
+
+marker_bool_matches=$(grep -REn '!![[:space:]]*readfile[[:space:]]*\([^)]*/etc/wifi-release-done' \
+	"$root/lib" "$root/etc" "$root/usr" 2>/dev/null || true)
+if [ -n "$marker_bool_matches" ]; then
+	fail WIFI_RELEASE_MARKER_NOT_READ_AS_BOOLEAN
+else
+	pass WIFI_RELEASE_MARKER_NOT_READ_AS_BOOLEAN
+fi
+
+require_pattern "$policy" "printf '%s\\n' done > /etc/wifi-release-done" WIFI_RELEASE_MARKER_NONEMPTY
 runtime_interface_matches=$(grep -REn 'wlan0|wlan1' \
 	"$root/etc/uci-defaults" "$root/etc/init.d" "$root/usr/libexec" "$root/usr/sbin" || true)
 if [ -n "$runtime_interface_matches" ]; then

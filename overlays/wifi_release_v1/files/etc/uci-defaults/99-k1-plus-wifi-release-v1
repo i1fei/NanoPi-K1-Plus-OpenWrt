@@ -179,6 +179,6 @@ for service in k1plus-hw-watchdog k1plus-network k1plus-wifi-watchdog; do
 done
 
 rm -f "$failure_file" "$attempt_file" || fail 'failure marker cleanup failed'
-touch /etc/wifi-release-done || fail 'completion marker failed'
+printf '%s\n' done > /etc/wifi-release-done || fail 'completion marker failed'
 logger -t k1-plus "wifi_release_v1 provisioned $ssid; DHCP mode service enabled"
 exit 0
