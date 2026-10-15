@@ -1,29 +1,17 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From 2f950fe7d9d251ea19547ee0ccc99f968c96dd7f Mon Sep 17 00:00:00 2001
 From: NanoPi K1 Plus OpenWrt project <noreply@example.invalid>
-Date: Wed, 15 Jul 2026 00:00:00 +0800
+Date: Thu, 15 Oct 2026 15:09:40 +0800
 Subject: [PATCH] wifi-scripts: keep K1 Plus on one real rtl8189es radio
 
-The runtime wifi config generator may append another radio section whenever it
-sees a stale or mismatched K1 Plus wireless config. On the real board that
-turns one rtl8189es PHY into ghost radio sections and keeps the console noisy
-with txpower warnings.
-
-Teach the shared mac80211 config generator to collapse K1 Plus back to one
-board-owned radio every time wifi config runs. The reset must happen before
-radio name selection and stale-path matching, otherwise a leftover section can
-still block the cleanup path. Keep the generated AP disabled by default on
-first boot so the wired LAN path can settle before rtl8189es is asked to start
-hostapd.
-
 ---
- .../network/config/wifi-scripts/files/lib/wifi/mac80211.uc | 21 ++++++++++++++++++++-
- 1 file changed, 20 insertions(+), 1 deletion(-)
+ .../wifi-scripts/files/lib/wifi/mac80211.uc   | 31 +++++++++++++++++--
+ 1 file changed, 29 insertions(+), 2 deletions(-)
 
 diff --git a/package/network/config/wifi-scripts/files/lib/wifi/mac80211.uc b/package/network/config/wifi-scripts/files/lib/wifi/mac80211.uc
-index fa45ff3d5d..e88b05cc5b 100644
+index fa45ff3d5d..9e26fe245b 100644
 --- a/package/network/config/wifi-scripts/files/lib/wifi/mac80211.uc
 +++ b/package/network/config/wifi-scripts/files/lib/wifi/mac80211.uc
-@@ -9,11 +9,28 @@ let board = json(readfile("/etc/board.json"));
+@@ -9,11 +9,30 @@ let board = json(readfile("/etc/board.json"));
  if (!board.wlan)
  	exit(0);
  
@@ -54,7 +42,7 @@ index fa45ff3d5d..e88b05cc5b 100644
  function radio_exists(path, macaddr, phy, radio) {
  	for (let name, s in config) {
  		if (s[".type"] != "wifi-device")
-@@ -38,6 +54,12 @@ for (let phy_name, phy in board.wlan) {
+@@ -38,6 +57,12 @@ for (let phy_name, phy in board.wlan) {
  
  	let radios = length(info.radios) > 0 ? info.radios : [{ bands: info.bands }];
  	for (let radio in radios) {
@@ -67,7 +55,7 @@ index fa45ff3d5d..e88b05cc5b 100644
  		while (config[`radio${idx}`])
  			idx++;
  		let name = "radio" + idx;
-@@ -109,12 +131,14 @@ set ${si}=wifi-iface
+@@ -109,12 +134,14 @@ set ${si}=wifi-iface
  set ${si}.device='${name}'
  set ${si}.network='lan'
  set ${si}.mode='ap'
