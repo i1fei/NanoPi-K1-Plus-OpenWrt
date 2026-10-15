@@ -130,7 +130,7 @@ else
 	pass WIFI_RELEASE_MARKER_NOT_READ_AS_BOOLEAN
 fi
 
-require_pattern "$policy" "printf '%s\\n' done > /etc/wifi-release-done" WIFI_RELEASE_MARKER_NONEMPTY
+require_literal "$policy" "printf '%s\n' done > /etc/wifi-release-done" WIFI_RELEASE_MARKER_NONEMPTY
 runtime_interface_matches=$(grep -REn 'wlan0|wlan1' \
 	"$root/etc/uci-defaults" "$root/etc/init.d" "$root/usr/libexec" "$root/usr/sbin" || true)
 if [ -n "$runtime_interface_matches" ]; then
