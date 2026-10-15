@@ -102,6 +102,16 @@ stability test remain pending until the fixed image is built and written to a
 clean card. The temporary device patch must not be used as evidence for those
 final image tests because clearing the overlay removes it.
 
+The fix is committed locally as `4a0fd2a`. The push attempt was blocked before
+any remote state change:
+
+```text
+fatal: unable to access 'https://github.com/i1fei/NanoPi-K1-Plus-OpenWrt.git/': Failed to connect to github.com port 443 via 127.0.0.1
+```
+
+The configured proxy variables and Git configuration all point to
+`http://127.0.0.1:9`. No proxy bypass and no new CI run was attempted.
+
 ## Environment Boundary
 
 WSL and POSIX shell execution were unavailable in the Windows sandbox because
