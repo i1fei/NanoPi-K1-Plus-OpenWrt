@@ -8,13 +8,32 @@ stage=0
 last_recovery=0
 recovery_count=0
 
+diag_base=/root/wifi-diag
+diag_collect=/usr/libexec/wifi-diag-collect.sh
+diag_mode_file=/etc/wifi-watchdog.mode
+
+mkdir -p "$diag_base" 2>/dev/null || true
+
+watchdog_mode() {
+	case "$(cat "$diag_mode_file" 2>/dev/null)" in
+		observe) printf '%s\n' observe ;;
+		*) printf '%s\n' recover ;;
+	esac
+}
+
+event() {
+	message=$*
+	logger -t "$tag" "$message"
+	printf '%s up=%ss mode=%s %s\n' "$(date '+%F %T')" "$(cut -d. -f1 /proc/uptime)" "$(watchdog_mode)" "$message" >> "$diag_base/watchdog.log" 2>/dev/null || true
+}
+
 [ -e /etc/wifi-release-done ] || {
-	logger -t "$tag" 'provisioning incomplete; WiFi recovery is disabled'
+	event 'provisioning incomplete; WiFi recovery is disabled'
 	exit 0
 }
 
 [ -e /root/WATCHDOG-DISABLED.txt ] && {
-	logger -t "$tag" 'automatic recovery disabled by watchdog limit'
+	event 'automatic recovery disabled by watchdog limit'
 	exit 0
 }
 
@@ -27,8 +46,9 @@ config_get recovery_window wifi recovery_window
 config_get max_recoveries wifi max_recoveries
 config_get reboot_cooldown wifi reboot_cooldown
 for value in "$interval" "$threshold" "$command_timeout" "$reload_grace" "$recovery_window" "$max_recoveries" "$reboot_cooldown"; do
-	case "$value" in ''|*[!0-9]*) logger -t "$tag" 'invalid watchdog configuration'; exit 1;; esac
+	case "$value" in ''|*[!0-9]*) event 'invalid watchdog configuration'; exit 1;; esac
 done
+event "START interval=$interval threshold=$threshold radio=dynamic iface=kernel-ap+netifd"
 
 kernel_ap_healthy() {
 	ap_interface=$(iw dev 2>/dev/null | awk '
@@ -62,7 +82,7 @@ allow_recovery() {
 	recovery_count=$((recovery_count + 1))
 	last_recovery=$now
 	if [ "$recovery_count" -gt "$max_recoveries" ]; then
-		logger -t "$tag" "recovery limit exceeded (${max_recoveries}/${recovery_window}s); automatic recovery disabled"
+		event "recovery limit exceeded (${max_recoveries}/${recovery_window}s); automatic recovery disabled"
 		printf '%s\n' 'Automatic WiFi recovery disabled after repeated escalations.' > /root/WATCHDOG-DISABLED.txt
 		return 1
 	fi
@@ -75,7 +95,7 @@ run_bounded() {
 	elapsed=0
 	while kill -0 "$pid" 2>/dev/null; do
 		if [ "$elapsed" -ge "$command_timeout" ]; then
-			logger -t "$tag" "command timed out after ${command_timeout}s: $*"
+			event "command timed out after ${command_timeout}s: $*"
 			return 124
 		fi
 		sleep 1
@@ -85,7 +105,7 @@ run_bounded() {
 }
 
 reboot_after_timeout() {
-	logger -t "$tag" 'recovery command is still blocked; rebooting and relying on the hardware watchdog if shutdown stalls'
+	event 'recovery command is still blocked; rebooting and relying on the hardware watchdog if shutdown stalls'
 	sync
 	reboot
 	exit 0
@@ -97,12 +117,12 @@ allow_reboot() {
 	last=$(cat "$stamp_file" 2>/dev/null || echo 0)
 	case "$last" in ''|*[!0-9]*) last=0;; esac
 	if [ "$last" -gt 0 ] && [ "$now" -lt $((last + reboot_cooldown)) ]; then
-		logger -t "$tag" "reboot cooldown active; refusing watchdog reboot for $((last + reboot_cooldown - now))s"
+		event "reboot cooldown active; refusing watchdog reboot for $((last + reboot_cooldown - now))s"
 		printf '%s\n' 'Automatic watchdog reboot is rate-limited to once per hour.' > /root/WATCHDOG-DISABLED.txt
 		return 1
 	fi
 	printf '%s\n' "$now" > "$stamp_file" || {
-		logger -t "$tag" 'could not persist watchdog reboot timestamp; refusing reboot'
+		event 'could not persist watchdog reboot timestamp; refusing reboot'
 		return 1
 	}
 	return 0
@@ -121,61 +141,80 @@ reload_driver() {
 while :; do
 	sleep "$interval"
 	if administrator_disabled; then
-		[ "$failures" -eq 0 ] || logger -t "$tag" 'administrator disabled wireless; recovery suppressed'
+		[ "$failures" -eq 0 ] || event 'administrator disabled wireless; recovery suppressed'
 		failures=0
 		stage=0
 		continue
 	fi
 	if healthy; then
-		[ "$failures" -eq 0 ] || logger -t "$tag" 'health recovered'
+		[ "$failures" -eq 0 ] || event 'health recovered'
 		failures=0
 		stage=0
 		continue
 	fi
 
 	failures=$((failures + 1))
-	logger -t "$tag" "health failure $failures/$threshold at recovery stage $stage"
+	event "health failure $failures/$threshold at recovery stage $stage"
 	[ "$failures" -lt "$threshold" ] && continue
 	failures=0
+
+	if [ "$(watchdog_mode)" = observe ]; then
+		event 'THRESHOLD-REACHED observe mode; collecting diagnostics and suppressing recovery'
+		"$diag_collect" observe "fails=$threshold stage=$stage"
+		event "collect tag=observe rc=$?"
+		continue
+	fi
+	if [ "$stage" -eq 0 ]; then
+		"$diag_collect" pre-reload "fails=$threshold stage=$stage"
+		event "collect tag=pre-reload rc=$?"
+	fi
 
 	case "$stage" in
 		0)
 			allow_recovery || exit 0
-			logger -t "$tag" 'recovery stage 1: wifi reload'
+			event 'recovery stage 1: wifi reload'
 			run_bounded wifi reload
 			result=$?
 			[ "$result" -eq 124 ] && reboot_after_timeout
-			logger -t "$tag" "waiting ${reload_grace}s after wifi reload"
+			event "waiting ${reload_grace}s after wifi reload"
 			sleep "$reload_grace"
+			"$diag_collect" post-reload "stage=1 result=$result"
+			event "collect tag=post-reload rc=$?"
 			if healthy; then
-				logger -t "$tag" 'wifi reload restored kernel AP, hostapd, and netifd UBus state'
+				event 'wifi reload restored kernel AP, hostapd, and netifd UBus state'
 				stage=0
 				continue
 			fi
-			logger -t "$tag" 'wifi reload did not restore kernel AP and netifd UBus state; no validated non-driver recovery path is available'
+			event 'wifi reload did not restore kernel AP and netifd UBus state; no validated non-driver recovery path is available'
 			stage=1
 			;;
 		1)
 			allow_recovery || exit 0
-			logger -t "$tag" 'recovery stage 2: driver reload'
+			"$diag_collect" pre-driver-reload "fails=$threshold stage=$stage"
+			event "collect tag=pre-driver-reload rc=$?"
+			event 'recovery stage 2: driver reload'
 			reload_driver
 			result=$?
 			[ "$result" -eq 124 ] && reboot_after_timeout
-			[ "$result" -eq 0 ] || logger -t "$tag" 'driver reload failed'
-			logger -t "$tag" "waiting ${reload_grace}s after driver reload"
+			[ "$result" -eq 0 ] || event 'driver reload failed'
+			event "waiting ${reload_grace}s after driver reload"
 			sleep "$reload_grace"
+			"$diag_collect" post-reload "stage=2 result=$result"
+			event "collect tag=post-reload rc=$?"
 			if healthy; then
-				logger -t "$tag" 'driver reload restored kernel AP, hostapd, and netifd UBus state'
+				event 'driver reload restored kernel AP, hostapd, and netifd UBus state'
 				stage=0
 				continue
 			fi
-			logger -t "$tag" 'driver reload did not restore kernel AP and netifd UBus state'
+			event 'driver reload did not restore kernel AP and netifd UBus state'
 			stage=2
 			;;
 		*)
 			allow_recovery || exit 0
 			allow_reboot || exit 0
-			logger -t "$tag" 'recovery stage 3: reboot'
+			"$diag_collect" pre-reboot "stage=$stage"
+			event "collect tag=pre-reboot rc=$?"
+			event 'recovery stage 3: reboot'
 			sync
 			reboot
 			exit 0

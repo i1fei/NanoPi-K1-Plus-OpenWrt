@@ -88,6 +88,12 @@ done
 [ -f "$SOURCE_DIR/files/usr/sbin/k1plus-wifi-watchdog" ] &&
 	cp "$SOURCE_DIR/files/usr/sbin/k1plus-wifi-watchdog" \
 		"$ARTIFACT_DIR/k1plus-wifi-watchdog"
+[ -f "$SOURCE_DIR/files/usr/libexec/wifi-diag-collect.sh" ] &&
+	cp "$SOURCE_DIR/files/usr/libexec/wifi-diag-collect.sh" \
+		"$ARTIFACT_DIR/wifi-diag-collect.sh"
+[ -f "$SOURCE_DIR/files/etc/wifi-watchdog.mode" ] &&
+	cp "$SOURCE_DIR/files/etc/wifi-watchdog.mode" \
+		"$ARTIFACT_DIR/wifi-watchdog.mode"
 [ -f "$SOURCE_DIR/files/etc/config/k1plus_network" ] &&
 	cp "$SOURCE_DIR/files/etc/config/k1plus_network" \
 		"$ARTIFACT_DIR/k1plus-network-config"

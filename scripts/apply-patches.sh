@@ -98,6 +98,16 @@ if [ -d "$OVERLAY_DIR" ]; then
 	echo "COPIED overlay files for $PATCH_MODE"
 fi
 
+if [ "$PATCH_MODE" = "wifi_release_v1" ]; then
+	install -D -m 0755 \
+		"$ROOT_DIR/overlays/wifi_release_v1/files/usr/libexec/wifi-diag-collect.sh" \
+		"$SOURCE_DIR/files/usr/libexec/wifi-diag-collect.sh"
+	install -D -m 0755 \
+		"$ROOT_DIR/overlays/wifi_release_v1/files/usr/sbin/k1plus-wifi-watchdog" \
+		"$SOURCE_DIR/files/usr/sbin/k1plus-wifi-watchdog"
+	echo "INSTALLED diagnostic watchdog tools with mode 0755"
+fi
+
 if [ "$PATCH_MODE" = "wifi_compat" ] || [ "$PATCH_MODE" = "wifi_compat_v2" ]; then
 	for patch in \
 		"$PATCH_DIR/007-stabilize-k1-plus-rtl8189es-radio.patch" \

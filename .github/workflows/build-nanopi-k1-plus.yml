@@ -21,6 +21,14 @@ on:
         required: false
         default: false
         type: boolean
+      watchdog_mode:
+        description: Wi-Fi diagnostic watchdog mode (recover or observe)
+        required: false
+        default: recover
+        type: choice
+        options:
+          - recover
+          - observe
       keep_build_info:
         description: Keep source and build directory inventory
         required: false
@@ -37,6 +45,7 @@ jobs:
       BUILD_PROFILE: ${{ github.event.inputs.profile || 'default' }}
       SOURCE_REF: ${{ github.event.inputs.source_ref || '4cafb73e88b6cf61cfeca2ee6cf8ecabb60f7a07' }}
       DEBUG_BUILD: ${{ github.event.inputs.debug || 'false' }}
+      WATCHDOG_MODE: ${{ github.event.inputs.watchdog_mode || 'recover' }}
       KEEP_BUILD_INFO: ${{ github.event.inputs.keep_build_info || 'false' }}
     steps:
       - name: Checkout project
@@ -104,6 +113,14 @@ jobs:
           esac
           [ -f "$config_path" ] || { echo "missing config: $config_path" >&2; exit 1; }
           ./scripts/apply-patches.sh .work/openwrt "$GITHUB_WORKSPACE" "$patch_mode" | tee .work/patch.log
+          case "$WATCHDOG_MODE" in
+            recover|observe) ;;
+            *) echo "invalid WATCHDOG_MODE: $WATCHDOG_MODE" >&2; exit 1 ;;
+          esac
+          if [ "$BUILD_PROFILE" = wifi_release_v1 ]; then
+            install -D -m 0644 /dev/null .work/openwrt/files/etc/wifi-watchdog.mode
+            printf '%s\n' "$WATCHDOG_MODE" > .work/openwrt/files/etc/wifi-watchdog.mode
+          fi
           cp "$config_path" .work/openwrt/.config
           cd .work/openwrt
           kernel_config_fragment=target/linux/generic/config-6.18

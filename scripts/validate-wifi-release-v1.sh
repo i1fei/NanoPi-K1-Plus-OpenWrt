@@ -42,6 +42,7 @@ for path in \
 	etc/init.d/k1plus-network \
 	etc/init.d/k1plus-wifi-watchdog \
 	etc/init.d/k1plus-hw-watchdog \
+	usr/libexec/wifi-diag-collect.sh \
 	etc/profile.d/99-k1-plus-wifi.sh \
 	usr/libexec/k1plus-dhcp-event \
 	usr/sbin/k1plus-network-mode \
@@ -54,6 +55,7 @@ for path in \
 	etc/init.d/k1plus-network \
 	etc/init.d/k1plus-wifi-watchdog \
 	etc/init.d/k1plus-hw-watchdog \
+	usr/libexec/wifi-diag-collect.sh \
 	usr/libexec/k1plus-dhcp-event \
 	usr/sbin/k1plus-network-mode \
 	usr/sbin/k1plus-wifi-watchdog; do
@@ -121,6 +123,21 @@ require_pattern "$watchdog" 'WATCHDOG-DISABLED.txt' WIFI_WATCHDOG_LOOP_GUARD
 reject_pattern "$watchdog" '(^|[[:space:]])wifi[[:space:]]+(down|up)([[:space:]]|$)' WIFI_WATCHDOG_NO_DOWN_UP
 reject_pattern "$watchdog" 'wlan0|wlan1' WIFI_WATCHDOG_DYNAMIC_INTERFACE
 reject_pattern usr/sbin/k1plus-network-mode 'wlan0|wlan1' NETWORK_MODE_DYNAMIC_INTERFACE
+
+require_file etc/wifi-watchdog.mode WIFI_WATCHDOG_MODE_FILE
+require_pattern etc/wifi-watchdog.mode '^(recover|observe)[[:space:]]*$' WIFI_WATCHDOG_MODE_VALID
+require_pattern "$watchdog" 'wifi-diag-collect\\.sh' WIFI_WATCHDOG_DIAG_COLLECTOR
+require_pattern "$watchdog" 'wifi-watchdog\\.mode' WIFI_WATCHDOG_MODE_CONTROL
+require_pattern "$watchdog" 'watchdog\\.log' WIFI_WATCHDOG_PERSISTENT_LOG
+require_pattern "$watchdog" 'THRESHOLD-REACHED' WIFI_WATCHDOG_THRESHOLD_LOG
+require_pattern usr/libexec/wifi-diag-collect.sh 'ubus call network\\.wireless status' WIFI_DIAG_UBUS_CAPTURE
+require_pattern usr/libexec/wifi-diag-collect.sh 'redact' WIFI_DIAG_REDACTION
+
+if grep -q "$(printf '\\r')" "$root/usr/libexec/wifi-diag-collect.sh" "$root/usr/sbin/k1plus-wifi-watchdog"; then
+	fail WIFI_DIAG_SCRIPTS_LF
+else
+	pass WIFI_DIAG_SCRIPTS_LF
+fi
 
 marker_bool_matches=$(grep -REn '!![[:space:]]*readfile[[:space:]]*\([^)]*/etc/wifi-release-done' \
 	"$root/lib" "$root/etc" "$root/usr" 2>/dev/null || true)
