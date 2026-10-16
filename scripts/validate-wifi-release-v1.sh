@@ -126,14 +126,14 @@ reject_pattern usr/sbin/k1plus-network-mode 'wlan0|wlan1' NETWORK_MODE_DYNAMIC_I
 
 require_file etc/wifi-watchdog.mode WIFI_WATCHDOG_MODE_FILE
 require_pattern etc/wifi-watchdog.mode '^(recover|observe)[[:space:]]*$' WIFI_WATCHDOG_MODE_VALID
-require_pattern "$watchdog" 'wifi-diag-collect\\.sh' WIFI_WATCHDOG_DIAG_COLLECTOR
-require_pattern "$watchdog" 'wifi-watchdog\\.mode' WIFI_WATCHDOG_MODE_CONTROL
-require_pattern "$watchdog" 'watchdog\\.log' WIFI_WATCHDOG_PERSISTENT_LOG
+require_pattern "$watchdog" 'wifi-diag-collect\.sh' WIFI_WATCHDOG_DIAG_COLLECTOR
+require_pattern "$watchdog" 'wifi-watchdog\.mode' WIFI_WATCHDOG_MODE_CONTROL
+require_pattern "$watchdog" 'watchdog\.log' WIFI_WATCHDOG_PERSISTENT_LOG
 require_pattern "$watchdog" 'THRESHOLD-REACHED' WIFI_WATCHDOG_THRESHOLD_LOG
-require_pattern usr/libexec/wifi-diag-collect.sh 'ubus call network\\.wireless status' WIFI_DIAG_UBUS_CAPTURE
+require_pattern usr/libexec/wifi-diag-collect.sh 'ubus call network\.wireless status' WIFI_DIAG_UBUS_CAPTURE
 require_pattern usr/libexec/wifi-diag-collect.sh 'redact' WIFI_DIAG_REDACTION
 
-if grep -q "$(printf '\\r')" "$root/usr/libexec/wifi-diag-collect.sh" "$root/usr/sbin/k1plus-wifi-watchdog"; then
+if grep -q "$(printf '\r')" "$root/usr/libexec/wifi-diag-collect.sh" "$root/usr/sbin/k1plus-wifi-watchdog"; then
 	fail WIFI_DIAG_SCRIPTS_LF
 else
 	pass WIFI_DIAG_SCRIPTS_LF

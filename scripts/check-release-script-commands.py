@@ -89,6 +89,22 @@ def extract_commands(path: Path) -> tuple[set[str], set[str]]:
     return extract_commands_from_text(path.read_text(encoding="utf-8"))
 
 
+def extract_absolute_path_assignments(text: str) -> dict[str, str]:
+    """Resolve simple shell variables used as command paths."""
+    assignments: dict[str, str] = {}
+    for line in strip_heredocs(text).splitlines():
+        match = re.match(r"^[ \t]*([A-Za-z_][A-Za-z0-9_]*)=(.+?)[ \t]*$", line)
+        if not match:
+            continue
+        try:
+            values = shlex.split(match.group(2), comments=False, posix=True)
+        except ValueError:
+            continue
+        if len(values) == 1 and values[0].startswith("/"):
+            assignments[f"${match.group(1)}"] = values[0]
+    return assignments
+
+
 def extract_commands_from_text(text: str) -> tuple[set[str], set[str]]:
     local_functions = set(re.findall(r"(?m)^([A-Za-z_][A-Za-z0-9_]*)\(\)[ \t]*\{", text))
     tokens = shell_tokens(text)
@@ -242,11 +258,21 @@ option fake command
 EOF
 value=$(date +%s)
 run_bounded wifi reload
+diag_collect=/usr/libexec/wifi-diag-collect.sh
+"$diag_collect" observe
 """
     commands, _ = extract_commands_from_text(fixture)
+    assignments = extract_absolute_path_assignments(fixture)
+    resolved_commands = {assignments.get(command, command) for command in commands}
     required = {"logger", "cat", "date", "wifi", "exit"}
     forbidden = {"ok", "option", "fake", "command", "*"}
-    if not required <= commands or commands & forbidden:
+    if (
+        not required <= commands
+        or commands & forbidden
+        or assignments.get("$diag_collect") != "/usr/libexec/wifi-diag-collect.sh"
+        or "$diag_collect" in resolved_commands
+        or "/usr/libexec/wifi-diag-collect.sh" not in resolved_commands
+    ):
         raise RuntimeError(f"command extractor self-test failed: {sorted(commands)}")
 
 
@@ -265,7 +291,9 @@ def main() -> int:
     command_sources: dict[str, set[str]] = {}
     local_functions: set[str] = set()
     for script in scripts:
-        commands, functions = extract_commands(script)
+        text = script.read_text(encoding="utf-8")
+        commands, functions = extract_commands_from_text(text)
+        assignments = extract_absolute_path_assignments(text)
         local_functions.update(functions)
         relative = "/" + str(script.relative_to(root)).replace(os.sep, "/")
         first_line = script.read_text(encoding="utf-8").splitlines()[0]
@@ -274,6 +302,7 @@ def main() -> int:
                 if interpreter.startswith("/"):
                     command_sources.setdefault(interpreter, set()).add(relative)
         for command in commands:
+            command = assignments.get(command, command)
             command_sources.setdefault(command, set()).add(relative)
 
     failures = 0
