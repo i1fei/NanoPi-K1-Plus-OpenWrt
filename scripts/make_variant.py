@@ -293,6 +293,10 @@ def write_image(base_path: Path, output: Path, target: str, old: bytes, new: byt
                 squash_info = run(prefix + [tool("unsquashfs"), "-s",
                                             str(work / f"partition-{part['index']}.img")],
                                   check=False)
+                if compressor == "xz":
+                    command.extend(("-Xbcj", "arm64"))
+                if "Xattrs are not stored" in squash_info.stdout:
+                    command.append("-no-xattrs")
                 rootfs_trace(f"SQUASHFS_BASE used={used} available={len(raw_part)} "
                              f"tail_bytes={len(old_padding)} tail_sha256={sha(old_padding)} "
                              f"tail_unique_bytes={len(set(old_padding))} "
