@@ -1,21 +1,12 @@
 name: make-observe-variant
 
 on:
-  workflow_dispatch:
-    inputs:
-      base_run_id:
-        description: Recover build Run ID
-        required: true
-        type: string
-      compare_run_id:
-        description: Existing Observe build Run ID for reference
-        required: true
-        type: string
-      image_glob:
-        description: Exact image filename or glob; it must select one file per Run
-        required: true
-        default: NanoPi-K1-Plus-sunxi-cortexa53.img.gz
-        type: string
+  push:
+    branches:
+      - 'diag/strict-pair-*'
+    paths:
+      - '.github/variant-inputs.json'
+      - '.github/workflows/make-observe-variant.yml'
 
 permissions:
   contents: read
@@ -26,65 +17,105 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install image inspection tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y e2fsprogs squashfs-tools
 
       - name: Run variant selftest first
-        run: python3 scripts/selftest_variant.py
+        run: sudo python3 scripts/selftest_variant.py
 
-      - name: Download source images
+      - name: Validate inputs
+        id: inputs
         env:
           GH_TOKEN: ${{ github.token }}
-          BASE_RUN_ID: ${{ inputs.base_run_id }}
-          COMPARE_RUN_ID: ${{ inputs.compare_run_id }}
-          IMAGE_GLOB: ${{ inputs.image_glob }}
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os, re
+          with open('.github/variant-inputs.json', encoding='utf-8') as stream:
+              data = json.load(stream)
+          for key in ('base_run_id', 'compare_run_id'):
+              if not re.fullmatch(r'[0-9]+', str(data[key])):
+                  raise SystemExit(f'{key} must contain digits only')
+          if not data['target_path'].startswith('/'):
+              raise SystemExit('target_path must be absolute')
+          if data['target_path'] != '/etc/wifi-watchdog.mode':
+              raise SystemExit('unexpected target_path')
+          for key in ('base_run_id', 'compare_run_id', 'image_glob', 'target_path', 'old_content', 'new_content'):
+              value = str(data[key]).replace('\n', r'\n')
+              print(f'{key}={value}')
+          PY
+
+      - name: Download existing build artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_RUN_ID: ${{ steps.inputs.outputs.base_run_id }}
+          COMPARE_RUN_ID: ${{ steps.inputs.outputs.compare_run_id }}
+          IMAGE_GLOB: ${{ steps.inputs.outputs.image_glob }}
         run: |
           set -euo pipefail
-          download_one() {
-            run_id="$1"
-            destination="$2"
-            mkdir -p "$destination"
-            artifact_id="$(gh api "/repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/artifacts" --paginate --jq '.artifacts[] | select(.name == "NanoPi-K1-Plus-OpenWrt" and .expired == false) | .id' | head -n 1)"
-            test -n "$artifact_id"
-            gh api "/repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}/zip" > "$destination/artifact.zip"
-            unzip -q "$destination/artifact.zip" -d "$destination/unpacked"
-            mapfile -t candidates < <(find "$destination/unpacked" -type f -name "$IMAGE_GLOB" | sort)
-            test "${#candidates[@]}" -eq 1 || { printf 'expected one image, found %s\n' "${#candidates[@]}" >&2; printf '%s\n' "${candidates[@]}" >&2; exit 1; }
-            cp "${candidates[0]}" "$destination/image.img.gz"
-            sha256sum "$destination/image.img.gz" | tee "$destination/sha256.txt"
-          }
-          download_one "$BASE_RUN_ID" work/base
-          download_one "$COMPARE_RUN_ID" work/reference
+          for item in "base:$BASE_RUN_ID" "reference:$COMPARE_RUN_ID"; do
+            name=${item%%:*}
+            run_id=${item#*:}
+            dest="work/$name"
+            mkdir -p "$dest"
+            gh run download "$run_id" --repo "$GITHUB_REPOSITORY" \
+              --name NanoPi-K1-Plus-OpenWrt --dir "$dest/download"
+            mapfile -t images < <(find "$dest/download" -type f -name "$IMAGE_GLOB" -print | sort)
+            if [ "${#images[@]}" -ne 1 ]; then
+              printf 'need exactly one image for run %s; found %s candidates:\n' "$run_id" "${#images[@]}" >&2
+              printf '%s\n' "${images[@]}" >&2
+              find "$dest/download" -type f -print | sort >&2
+              exit 1
+            fi
+            cp -- "${images[0]}" "$dest/image.img.gz"
+            sha256sum "$dest/image.img.gz" | tee "$dest/sha256.txt"
+          done
+
+      - name: Run release-script false-positive regressions
+        run: |
+          sudo python3 scripts/test-validation-regressions.py \
+            --image work/base/image.img.gz --old-revision b9e5348^
 
       - name: Make Observe variant from Recover bytes
-        continue-on-error: true
+        env:
+          TARGET_PATH: ${{ steps.inputs.outputs.target_path }}
+          OLD_CONTENT: ${{ steps.inputs.outputs.old_content }}
+          NEW_CONTENT: ${{ steps.inputs.outputs.new_content }}
         run: |
-          python3 scripts/make_variant.py make \
-            --base work/base/image.img.gz \
-            --output work/observe.img.gz \
-            --mode observe \
-            --report make-report.md
+          sudo python3 scripts/make_variant.py make \
+            --base work/base/image.img.gz --output work/observe.img.gz \
+            --target "$TARGET_PATH" --old-content "$OLD_CONTENT" \
+            --new-content "$NEW_CONTENT" --report make-report.md
 
-      - name: Verify exact rootfs file delta
-        continue-on-error: true
+      - name: Independently verify variant
+        env:
+          TARGET_PATH: ${{ steps.inputs.outputs.target_path }}
+          OLD_CONTENT: ${{ steps.inputs.outputs.old_content }}
+          NEW_CONTENT: ${{ steps.inputs.outputs.new_content }}
         run: |
-          python3 scripts/make_variant.py verify \
-            --base work/base/image.img.gz \
-            --compare work/observe.img.gz \
-            --report verify-report.md
+          sudo python3 scripts/make_variant.py verify \
+            --base work/base/image.img.gz --compare work/observe.img.gz \
+            --target "$TARGET_PATH" --old-content "$OLD_CONTENT" \
+            --new-content "$NEW_CONTENT" --report verify-report.md
 
-      - name: Produce pair diff
-        continue-on-error: true
+      - name: Compare existing Observe build for information
         run: |
-          python3 scripts/make_variant.py diff \
-            --base work/base/image.img.gz \
-            --compare work/observe.img.gz \
+          sudo python3 scripts/make_variant.py diff \
+            --base work/base/image.img.gz --compare work/reference/image.img.gz \
             --report ci-pair-diff.md
 
+      - name: Write checksums
+        run: sha256sum work/observe.img.gz work/base/image.img.gz work/reference/image.img.gz > SHA256SUMS
+
       - name: Upload reports and variant
-        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: observe-variant-${{ github.run_id }}
-          if-no-files-found: warn
+          if-no-files-found: error
           path: |
             work/observe.img.gz
             work/base/sha256.txt
@@ -92,10 +123,4 @@ jobs:
             make-report.md
             verify-report.md
             ci-pair-diff.md
-
-      - name: Enforce PASS verdicts
-        run: |
-          set -euo pipefail
-          grep -Fx 'Verdict: PASS' make-report.md
-          grep -Fx 'Verdict: PASS' verify-report.md
-          test -s work/observe.img.gz
+            SHA256SUMS
