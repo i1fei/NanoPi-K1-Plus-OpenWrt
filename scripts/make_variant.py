@@ -160,10 +160,14 @@ def locate_rootfs(raw: bytes, work: Path) -> tuple[dict[str, int | str], Path]:
             prefix = ["sudo"] if os.geteuid() != 0 and shutil.which("sudo") else []
             result = run(prefix + [unsquashfs, "-no-progress", "-d", str(root), str(candidate)], check=False)
             if result.returncode:
+                print(f"ROOTFS_PROBE partition={item['index']} format=squashfs rc={result.returncode}\n{result.stdout}",
+                      flush=True)
                 continue
             if (root / "etc/openwrt_release").is_file():
                 return {**item, "start_byte": start, "end_byte": end, "fs": fs,
                         "table": table_kind, "used": struct.unpack_from("<Q", block, 40)[0]}, root
+            print(f"ROOTFS_PROBE partition={item['index']} format=squashfs rc=0 missing=/etc/openwrt_release",
+                  flush=True)
         else:
             result = debugfs(candidate, "cat /etc/openwrt_release", check=False)
             if "DISTRIB_ID" in result or "OPENWRT_RELEASE" in result:
@@ -171,6 +175,8 @@ def locate_rootfs(raw: bytes, work: Path) -> tuple[dict[str, int | str], Path]:
                 run([tool("debugfs"), "-R", f"rdump / {root}", str(candidate)])
                 return {**item, "start_byte": start, "end_byte": end, "fs": fs,
                         "table": table_kind}, root
+            print(f"ROOTFS_PROBE partition={item['index']} format=ext probe_output={result.stdout!r}",
+                  flush=True)
     raise RuntimeError("no MBR/GPT partition contains an OpenWrt rootfs")
 
 
