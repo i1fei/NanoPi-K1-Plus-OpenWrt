@@ -1,2 +1,4 @@
 *.sh text eol=lf
+*.py text eol=lf
+.github/workflows/*.yml text eol=lf
 overlays/wifi_release_v1/files/usr/sbin/k1plus-wifi-watchdog text eol=lf
