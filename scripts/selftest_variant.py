@@ -6,6 +6,7 @@ from __future__ import annotations
 import gzip
 import os
 from pathlib import Path
+import random
 import shutil
 import struct
 import subprocess
@@ -54,6 +55,13 @@ def verify(args: list[str], should_pass: bool, label: str) -> None:
         print(f"NEGATIVE_{label}=DETECTED")
 
 
+def verify_rejected_by(args: list[str], label: str, check: str) -> None:
+    verify(args, False, label)
+    report_path = Path(args[args.index("--report") + 1])
+    if f"{check}: FAIL" not in report_path.read_text():
+        raise RuntimeError(f"{label} was not rejected by expected check {check}")
+
+
 def build_root_partition(source: Path, image: Path) -> None:
     with image.open("wb") as stream:
         stream.truncate(ROOT_SECTORS * SECTOR)
@@ -83,6 +91,41 @@ def sparse_squashfs_image(root_partition: bytes, path: Path, tail: bytes) -> Non
     raw[start:start + len(root_partition)] = root_partition
     raw[start + len(root_partition):] = tail
     pack(bytes(raw), path)
+
+
+def build_squashfs(tree: Path, image: Path) -> bytes:
+    result = subprocess.run([shutil.which("mksquashfs") or "mksquashfs", str(tree), str(image),
+                             "-noappend", "-comp", "xz", "-b", "131072", "-no-progress"],
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    if result.returncode:
+        raise RuntimeError(result.stdout)
+    return image.read_bytes()
+
+
+def squashfs_variant_case(work: Path, template: Path, name: str, old: str, new: str,
+                          tail: bytes) -> tuple[Path, Path, bytes]:
+    tree = work / f"{name}-root"
+    shutil.copytree(template, tree)
+    (tree / "etc/wifi-watchdog.mode").write_bytes(old.encode() + b"\n")
+    squash = work / f"{name}.squashfs"
+    squash_bytes = build_squashfs(tree, squash)
+    base = work / f"{name}-base.img.gz"
+    sparse_squashfs_image(squash_bytes, base, tail)
+    output = work / f"{name}-variant.img.gz"
+    make_report = work / f"{name}-make.md"
+    args = ["make", "--base", str(base), "--output", str(output), "--target",
+            "/etc/wifi-watchdog.mode", "--old-content", old, "--new-content", new,
+            "--report", str(make_report)]
+    verify(args, True, f"SQUASHFS_{name.upper()}_MAKE")
+    if "Verdict: PASS" not in make_report.read_text():
+        raise RuntimeError(f"{name} SquashFS make report did not contain PASS")
+    print(f"squashfs: {name} make PASS")
+    verify_args = ["verify", "--base", str(base), "--compare", str(output), "--target",
+                   "/etc/wifi-watchdog.mode", "--old-content", old, "--new-content", new,
+                   "--report", str(work / f"{name}-verify.md")]
+    verify(verify_args, True, f"SQUASHFS_{name.upper()}_VERIFY")
+    print(f"squashfs: {name} verify PASS")
+    return base, output, gzip.decompress(output.read_bytes())
 
 
 def main() -> int:
@@ -152,67 +195,79 @@ def main() -> int:
                 "/etc/wifi-watchdog.mode", "--old-content", "recover", "--new-content", "observe",
                 "--report", str(work / "identical.md")], False, "IDENTICAL_IMAGE")
 
-        squash = work / "rootfs.squashfs"
-        subprocess.run([shutil.which("mksquashfs"), str(source), str(squash), "-noappend",
-                        "-comp", "xz", "-b", "131072", "-no-progress"], check=True,
-                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-        squash_bytes = squash.read_bytes()
-        squash_info = subprocess.run([shutil.which("unsquashfs"), "-s", str(squash)],
-                                     check=True, stdout=subprocess.PIPE,
-                                     stderr=subprocess.STDOUT, text=True).stdout
-        if "Compression xz" not in squash_info or "Block size 131072" not in squash_info:
-            raise RuntimeError(f"unexpected synthetic SquashFS options:\n{squash_info}")
+        sparse_base, sparse_output, changed_tail_raw = squashfs_variant_case(
+            work, source, "sparse-footer", "recover", "observe", SQUASHFS_TAIL)
+        small_old = "".join(random.Random(731).choices("abcdefghijklmnopqrstuvwxyz0123456789", k=12000))
+        smaller_base, _, smaller_raw = squashfs_variant_case(
+            work, source, "smaller", small_old, "short", SQUASHFS_TAIL)
+        larger_new = "".join(random.Random(1907).choices("abcdefghijklmnopqrstuvwxyz0123456789", k=12000))
+        larger_base, _, larger_raw = squashfs_variant_case(
+            work, source, "larger-cross-boundary", "recover", larger_new, SQUASHFS_TAIL)
+        empty_base, _, empty_raw = squashfs_variant_case(
+            work, source, "empty-tail", "recover", "observe", b"")
 
-        sparse_base = work / "sparse-squash-base.img.gz"
-        sparse_squashfs_image(squash_bytes, sparse_base, SQUASHFS_TAIL)
-        sparse_output = work / "sparse-squash-observe.img.gz"
-        sparse_make_report = work / "sparse-squash-make.md"
-        sparse_make = ["make", "--base", str(sparse_base), "--output", str(sparse_output),
-                       "--target", "/etc/wifi-watchdog.mode", "--old-content", "recover",
-                       "--new-content", "observe", "--report", str(sparse_make_report)]
-        verify(sparse_make, True, "SPARSE_SQUASHFS_MAKE")
-        if "Verdict: PASS" not in sparse_make_report.read_text():
-            raise RuntimeError("sparse SquashFS make report did not contain PASS")
-        sparse_verify = ["verify", "--base", str(sparse_base), "--compare", str(sparse_output),
-                         "--target", "/etc/wifi-watchdog.mode", "--old-content", "recover",
-                         "--new-content", "observe", "--report", str(work / "sparse-squash-verify.md")]
-        verify(sparse_verify, True, "SPARSE_SQUASHFS_VERIFY")
-
-        changed_tail_raw = gzip.decompress(sparse_output.read_bytes())
         sparse_start = SPARSE_ROOT_START * SECTOR
+        sparse_input_raw = gzip.decompress(sparse_base.read_bytes())
+        base_used = struct.unpack_from("<Q", sparse_input_raw, sparse_start + 40)[0]
         rebuilt_used = struct.unpack_from("<Q", changed_tail_raw, sparse_start + 40)[0]
-        if changed_tail_raw[sparse_start + rebuilt_used:] != SQUASHFS_TAIL:
-            raise RuntimeError("sparse SquashFS footer was not preserved immediately after filesystem")
-        print("SPARSE_SQUASHFS_TAIL_PRESERVED=PASS")
+        base_aligned = (base_used + 4095) // 4096 * 4096
+        rebuilt_aligned = (rebuilt_used + 4095) // 4096 * 4096
+        if changed_tail_raw[sparse_start + rebuilt_aligned:] != SQUASHFS_TAIL:
+            raise RuntimeError("sparse SquashFS footer bytes were not preserved")
+        if len(changed_tail_raw) - len(sparse_input_raw) != rebuilt_aligned - base_aligned:
+            raise RuntimeError("sparse SquashFS image length delta does not match aligned U delta")
+        print("squashfs: sparse footer preserved PASS")
 
+        def used_at(path: Path) -> int:
+            raw = gzip.decompress(path.read_bytes())
+            return struct.unpack_from("<Q", raw, sparse_start + 40)[0]
+
+        smaller_base_u = used_at(smaller_base)
+        smaller_output_u = struct.unpack_from("<Q", smaller_raw, sparse_start + 40)[0]
+        if smaller_output_u >= smaller_base_u:
+            raise RuntimeError("smaller case did not produce a smaller SquashFS")
+        print("squashfs: smaller U PASS")
+
+        larger_base_u = used_at(larger_base)
+        larger_output_u = struct.unpack_from("<Q", larger_raw, sparse_start + 40)[0]
+        if larger_output_u <= larger_base_u:
+            raise RuntimeError("larger case did not produce a larger SquashFS")
+        if ((larger_output_u + 4095) // 4096) <= ((larger_base_u + 4095) // 4096):
+            raise RuntimeError("larger case did not cross a 4096-byte alignment boundary")
+        print("squashfs: larger across 4096-byte boundary PASS")
+        empty_used = struct.unpack_from("<Q", empty_raw, sparse_start + 40)[0]
+        empty_aligned = (empty_used + 4095) // 4096 * 4096
+        if empty_raw[sparse_start + empty_aligned:]:
+            raise RuntimeError("empty-tail case unexpectedly contains a T suffix")
+        print("squashfs: empty T PASS")
+
+        sparse_verify_args = ["--target", "/etc/wifi-watchdog.mode", "--old-content", "recover",
+                              "--new-content", "observe"]
         tail_bad_raw = bytearray(changed_tail_raw)
         tail_bad_raw[-1] ^= 1
         tail_bad = work / "sparse-tail-byte-bad.img.gz"
         pack(bytes(tail_bad_raw), tail_bad)
-        verify([*sparse_verify[0:1], "--base", str(sparse_base), "--compare", str(tail_bad),
-                *sparse_verify[5:]], False, "SPARSE_TAIL_BYTE")
+        verify_rejected_by(["verify", "--base", str(sparse_base), "--compare", str(tail_bad),
+                            *sparse_verify_args, "--report", str(work / "tail-byte.md")],
+                           "SPARSE_TAIL_BYTE", "T_equal")
+        print("squashfs: tail byte negative PASS")
+
+        tail_short = work / "sparse-tail-truncated.img.gz"
+        pack(changed_tail_raw[:-1], tail_short)
+        verify_rejected_by(["verify", "--base", str(sparse_base), "--compare", str(tail_short),
+                            *sparse_verify_args, "--report", str(work / "tail-truncated.md")],
+                           "SPARSE_TAIL_TRUNCATED", "T_equal")
+        print("squashfs: T truncated by one byte negative PASS")
 
         prefix_bad_raw = bytearray(changed_tail_raw)
-        prefix_bad_raw[sparse_start - 1] ^= 1
+        prefix_bad_raw[100] ^= 1
         prefix_bad = work / "sparse-prefix-byte-bad.img.gz"
         pack(bytes(prefix_bad_raw), prefix_bad)
-        verify(["verify", "--base", str(sparse_base), "--compare", str(prefix_bad),
-                "--target", "/etc/wifi-watchdog.mode", "--old-content", "recover",
-                "--new-content", "observe", "--report", str(work / "sparse-prefix.md")],
-               False, "SPARSE_PREFIX_BYTE")
+        verify_rejected_by(["verify", "--base", str(sparse_base), "--compare", str(prefix_bad),
+                            *sparse_verify_args, "--report", str(work / "prefix-byte.md")],
+                           "SPARSE_PREFIX_BYTE", "prefix_0_to_S_equal")
+        print("squashfs: [0,S) byte negative PASS")
 
-        squash_base = work / "squash-base.img.gz"
-        synthetic_image(squash_bytes, squash_base)
-        squash_output = work / "squash-observe.img.gz"
-        squash_report = work / "squash-make.md"
-        verify(["make", "--base", str(squash_base), "--output", str(squash_output), "--target",
-                "/etc/wifi-watchdog.mode", "--old-content", "recover", "--new-content", "observe",
-                "--report", str(squash_report)], True, "SQUASHFS_MAKE")
-        verify(["verify", "--base", str(squash_base), "--compare", str(squash_output), "--target",
-                "/etc/wifi-watchdog.mode", "--old-content", "recover", "--new-content", "observe",
-                "--report", str(work / "squash-verify.md")], True, "SQUASHFS_VERIFY")
-        if "Verdict: PASS" not in squash_report.read_text():
-            raise RuntimeError("SquashFS make report did not contain PASS")
         print("SQUASHFS_SELFTEST=PASS")
         print("SELFTEST=PASS")
     return 0

@@ -262,6 +262,47 @@ def squashfs_options(part: bytes) -> tuple[str, int, int]:
     return compressor, block, used
 
 
+def aligned_size(size: int, alignment: int | None) -> int:
+    if alignment is None:
+        return size
+    return ((size + alignment - 1) // alignment) * alignment
+
+
+def squashfs_padding_and_tail(part: bytes, used: int) -> tuple[int | None, bytes, bytes]:
+    suffix = part[used:]
+    if not suffix:
+        return None, b"", b""
+
+    def matching_alignment(padding: bytes) -> int | None:
+        if not padding or any(padding):
+            return None
+        end = used + len(padding)
+        pad_4k = aligned_size(used, 4096) - used
+        pad_64k = aligned_size(used, 65536) - used
+        if len(padding) == pad_64k and pad_64k > pad_4k and end == aligned_size(used, 65536):
+            return 65536
+        if len(padding) == pad_4k and end == aligned_size(used, 4096):
+            return 4096
+        return None
+
+    marker = suffix.find(b"FWx0")
+    if marker >= 0:
+        metadata = suffix.find(b"{", 0, marker)
+        if metadata >= 8 and suffix[metadata - 8:metadata] == bytes(8):
+            footer_start = used + metadata - 8
+            padding = part[used:footer_start]
+            alignment = matching_alignment(padding)
+            if alignment is not None:
+                return alignment, padding, part[footer_start:]
+            if not padding:
+                return None, b"", suffix
+
+    alignment = matching_alignment(suffix)
+    if alignment is not None:
+        return alignment, suffix, b""
+    return None, b"", suffix
+
+
 def write_image(base_path: Path, output: Path, target: str, old: bytes, new: bytes, report: Path) -> None:
     raw = read_image(base_path)
     try:
@@ -285,7 +326,7 @@ def write_image(base_path: Path, output: Path, target: str, old: bytes, new: byt
             if part["fs"] == "squashfs":
                 raw_part = raw[int(part["start_byte"]):int(part["end_byte"])]
                 compressor, block_size, used = squashfs_options(raw_part)
-                old_padding = raw_part[used:]
+                alignment, old_padding, old_tail = squashfs_padding_and_tail(raw_part, used)
                 out_part = work / "new.squashfs"
                 prefix = ["sudo"] if os.geteuid() != 0 and shutil.which("sudo") else []
                 command = prefix + [tool("mksquashfs"), str(root), str(out_part), "-noappend",
@@ -296,9 +337,9 @@ def write_image(base_path: Path, output: Path, target: str, old: bytes, new: byt
                 if "Xattrs are not stored" in squash_info.stdout:
                     command.append("-no-xattrs")
                 rootfs_trace(f"SQUASHFS_BASE used={used} available={len(raw_part)} "
-                             f"tail_bytes={len(old_padding)} tail_sha256={sha(old_padding)} "
-                             f"tail_unique_bytes={len(set(old_padding))} "
-                             f"tail_prefix={old_padding[:32].hex()!r} "
+                             f"padding_bytes={len(old_padding)} padding_sha256={sha(old_padding)} "
+                             f"padding_alignment={alignment} tail_bytes={len(old_tail)} "
+                             f"tail_sha256={sha(old_tail)} tail_prefix={old_tail[:32].hex()!r} "
                              f"unsquashfs_summary_rc={squash_info.returncode}\n"
                              f"{squash_info.stdout}")
                 rootfs_trace("SQUASHFS_REBUILD_COMMAND=" + repr(command))
@@ -316,16 +357,23 @@ def write_image(base_path: Path, output: Path, target: str, old: bytes, new: byt
                                        f"actual={rebuilt_options[:2]}\n{rebuilt_info.stdout}")
                 declared = int(part["declared_end_byte"]) - int(part["start_byte"])
                 rootfs_data_in_image = int(part["end_byte"]) - int(part["start_byte"])
-                output_payload = payload + old_padding
-                rootfs_trace(f"SQUASHFS_REBUILD_SIZE output={len(payload)} "
+                rebuilt_used = rebuilt_options[2]
+                rebuilt_padding = bytes(aligned_size(rebuilt_used, alignment) - rebuilt_used)
+                output_payload = payload[:rebuilt_used] + rebuilt_padding + old_tail
+                rootfs_trace(f"SQUASHFS_REBUILD_SIZE output_file={len(payload)} "
+                             f"bytes_used={rebuilt_used} padding_bytes={len(rebuilt_padding)} "
+                             f"padding_sha256={sha(rebuilt_padding)} padding_alignment={alignment} "
+                             f"tail_bytes={len(old_tail)} tail_sha256={sha(old_tail)} "
                              f"payload_with_tail={len(output_payload)} "
                              f"declared_partition_bytes={declared} "
                              f"rootfs_data_in_image={rootfs_data_in_image} "
-                             f"original_used={used} original_tail={len(old_padding)}")
+                             f"original_used={used} original_padding={len(old_padding)} "
+                             f"original_tail={len(old_tail)} "
+                             f"aligned_size_delta={aligned_size(rebuilt_used, alignment) - aligned_size(used, alignment)}")
                 if len(output_payload) > declared:
                     raise RuntimeError("rebuilt SquashFS plus preserved tail exceeds declared partition: "
-                                       f"output={len(payload)} tail={len(old_padding)} declared={declared} "
-                                       f"original_used={used} original_tail={len(old_padding)}")
+                                       f"output={len(output_payload)} declared={declared} "
+                                       f"original_used={used} original_tail={len(old_tail)}")
                 suffix = raw[int(part["end_byte"]):]
                 if suffix:
                     output_payload += bytes(declared - len(output_payload))
@@ -382,6 +430,7 @@ def write_image(base_path: Path, output: Path, target: str, old: bytes, new: byt
 
 def verify_pair(base_path: Path, compare_path: Path, target: str, old: bytes, new: bytes,
                 report: Path | None) -> None:
+    checks: dict[str, bool] = {}
     try:
         a, b = read_image(base_path), read_image(compare_path)
         with tempfile.TemporaryDirectory(prefix="verify-variant-") as temp:
@@ -393,58 +442,93 @@ def verify_pair(base_path: Path, compare_path: Path, target: str, old: bytes, ne
                 raise RuntimeError("partition table/rootfs partition bounds differ")
             root_start = int(pa["start_byte"])
             root_end = int(pa["declared_end_byte"])
+            length_delta = len(b) - len(a)
             root_last = root_end == max(item["end"] * SECTOR for item in partitions(a)[1])
-            if len(a) != len(b):
-                if pa["fs"] != "squashfs" or pb["fs"] != "squashfs" or not root_last:
-                    raise RuntimeError(f"expanded image sizes differ outside supported last SquashFS partition: {len(a)} != {len(b)}")
-                prefix_equal = a[:root_start] == b[:root_start]
-                suffix_equal = a[root_end:] == b[root_end:]
-                outside = prefix_equal and suffix_equal
-                regions = [] if outside else [(0, root_start, sha(a[:root_start]), sha(b[:root_start]))]
+            prefix_equal = a[:root_start] == b[:root_start]
+            suffix_a = a[root_end:] if root_end < len(a) else b""
+            shifted_suffix_start = root_end + length_delta
+            if root_last:
+                suffix_b = b[shifted_suffix_start:] if 0 <= shifted_suffix_start < len(b) else b""
+                suffix_equal = suffix_a == suffix_b
             else:
-                outside, regions = outside_hashes(a, b, root_start, min(root_end, len(a)))
+                suffix_b = b[root_end:] if root_end < len(b) else b""
+                suffix_equal = length_delta == 0 and suffix_a == suffix_b
             ma, mb = tree_manifest(ra), tree_manifest(rb)
             changed = []
             for name in sorted(set(ma) | set(mb)):
                 if ma.get(name) != mb.get(name):
                     changed.append(name)
             target_rel = "/" + target.lstrip("/")
-            if set(ma) != set(mb):
-                raise RuntimeError("rootfs path set changed")
-            if changed != [target_rel]:
-                raise RuntimeError(f"rootfs changed paths are not exactly the target: {changed}")
-            if (ra / target.lstrip("/")).read_bytes() != old or (rb / target.lstrip("/")).read_bytes() != new:
-                raise RuntimeError("target content does not match expected old/new values")
+            paths_equal = set(ma) == set(mb)
+            changed_only_target = changed == [target_rel]
+            target_contents = ((ra / target.lstrip("/")).read_bytes() == old and
+                               (rb / target.lstrip("/")).read_bytes() == new)
+            target_a, target_b = dict(ma.get(target_rel, {})), dict(mb.get(target_rel, {}))
+            target_a.pop("content", None)
+            target_b.pop("content", None)
+            target_a.pop("mtime_ns", None)
+            target_b.pop("mtime_ns", None)
+            target_metadata_equal = target_a == target_b
+            rootfs_file_level = (paths_equal and changed_only_target and target_contents and
+                                 target_metadata_equal)
+
             tail_equal = True
+            alignment_a = alignment_b = None
+            pad_a = pad_b = tail_a = tail_b = b""
+            aligned_delta = 0
+            used_a = used_b = 0
             if pa["fs"] == "squashfs":
                 part_a = a[root_start:min(root_end, len(a))]
-                part_b = b[root_start:min(root_end, len(b))]
+                part_b = b[root_start:min(root_end + max(length_delta, 0), len(b))]
                 used_a = squashfs_options(part_a)[2]
                 used_b = squashfs_options(part_b)[2]
-                tail_a, tail_b = part_a[used_a:], part_b[used_b:]
-                tail_equal = tail_a == tail_b
-                if not tail_equal:
-                    raise RuntimeError(f"bytes after SquashFS differ: {len(tail_a)} != {len(tail_b)}")
-            target_a, target_b = dict(ma[target_rel]), dict(mb[target_rel])
-            target_a.pop("content")
-            target_b.pop("content")
-            target_a.pop("mtime_ns")
-            target_b.pop("mtime_ns")
-            if target_a != target_b:
-                raise RuntimeError(f"target metadata changed: {target_a} != {target_b}")
-            if not outside:
-                raise RuntimeError(f"bytes outside rootfs differ: {regions}")
+                alignment_a, pad_a, tail_a = squashfs_padding_and_tail(part_a, used_a)
+                alignment_b, pad_b, tail_b = squashfs_padding_and_tail(part_b, used_b)
+                tail_equal = tail_a == tail_b and alignment_a == alignment_b
+                aligned_delta = (aligned_size(used_b, alignment_a) -
+                                 aligned_size(used_a, alignment_a))
+            expected_delta = aligned_delta if pa["fs"] == "squashfs" else 0
+            size_delta_equal = length_delta == expected_delta
+            outside = prefix_equal and suffix_equal
+            checks = {
+                "prefix_0_to_S_equal": prefix_equal,
+                "T_equal": tail_equal,
+                "image_length_delta_matches_aligned_U_delta": size_delta_equal,
+                "rootfs_file_level_target_only": rootfs_file_level,
+                "bytes_after_declared_rootfs_equal": suffix_equal,
+            }
+            details = (
+                f"base_length={len(a)} compare_length={len(b)} length_delta={length_delta}\n"
+                f"rootfs_start={root_start} prefix_sha256_base={sha(a[:root_start])} "
+                f"prefix_sha256_compare={sha(b[:root_start])}\n"
+                f"base_U={used_a} compare_U={used_b} alignment={alignment_a}/{alignment_b} "
+                f"aligned_U_delta={aligned_delta}\n"
+                f"base_padding_length={len(pad_a)} base_padding_sha256={sha(pad_a)} "
+                f"compare_padding_length={len(pad_b)} compare_padding_sha256={sha(pad_b)}\n"
+                f"base_T_length={len(tail_a)} base_T_sha256={sha(tail_a)} "
+                f"compare_T_length={len(tail_b)} compare_T_sha256={sha(tail_b)}\n"
+                f"rootfs_changed_paths={changed}"
+            )
+            failed = [name for name, passed in checks.items() if not passed]
+            if failed:
+                raise RuntimeError("verification checks failed: " + ", ".join(failed) + "\n" + details)
         if report:
-            report.write_text("# verify-report\n\nVerdict: PASS\n" +
-                              f"expanded_size_base: {len(a)}\nexpanded_size_compare: {len(b)}\n" +
-                              f"rootfs_changed_paths: {changed}\n" +
-                              f"outside_rootfs_equal: {outside}\nrootfs_target_metadata_equal: True\n" +
-                              f"squashfs_tail_equal: {tail_equal}\n" +
-                              f"rootfs_format: {pa['fs']}\nsquashfs_repacked: {str(pa['fs'] == 'squashfs').lower()}\n",
-                              encoding="utf-8")
+            lines = ["# verify-report", "", "Verdict: PASS"]
+            lines.extend(f"{name}: PASS" for name in checks)
+            lines.extend((f"expanded_size_base: {len(a)}", f"expanded_size_compare: {len(b)}",
+                          f"image_length_delta: {length_delta}", f"aligned_U_delta: {aligned_delta}",
+                          f"base_T_length: {len(tail_a)}", f"base_T_sha256: {sha(tail_a)}",
+                          f"compare_T_length: {len(tail_b)}", f"compare_T_sha256: {sha(tail_b)}",
+                          f"rootfs_changed_paths: {changed}", f"outside_rootfs_equal: {outside}",
+                          f"rootfs_format: {pa['fs']}",
+                          f"squashfs_repacked: {str(pa['fs'] == 'squashfs').lower()}"))
+            report.write_text("\n".join(lines) + "\n", encoding="utf-8")
     except Exception as exc:
         if report:
-            report.write_text(f"# verify-report\n\nVerdict: FAIL\nerror: {exc}\n", encoding="utf-8")
+            status = "\n".join(f"{name}: {'PASS' if passed else 'FAIL'}"
+                                 for name, passed in checks.items())
+            report.write_text(f"# verify-report\n\nVerdict: FAIL\n{status}\nerror: {exc}\n",
+                              encoding="utf-8")
         raise
 
 
