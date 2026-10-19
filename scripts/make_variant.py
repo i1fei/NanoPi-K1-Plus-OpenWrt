@@ -71,6 +71,16 @@ def check_ext4(label: str, part: Path, copy_path: Path | None = None) -> subproc
     return diagnostic(label, [tool("e2fsck"), "-fn", str(checked)])
 
 
+def rootfs_trace(message: str) -> None:
+    print(message, flush=True)
+    directory = os.environ.get("VARIANT_DIAGNOSTICS_DIR")
+    if directory:
+        path = Path(directory)
+        path.mkdir(parents=True, exist_ok=True)
+        with (path / "rootfs-probe.log").open("a", encoding="utf-8") as stream:
+            stream.write(message + "\n")
+
+
 def debugfs_step(part: Path, command: str, step: int) -> int:
     result = diagnostic(f"debugfs command {step}: {command}",
                         [tool("debugfs"), "-w", "-R", command, str(part)])
@@ -150,6 +160,9 @@ def locate_rootfs(raw: bytes, work: Path) -> tuple[dict[str, int | str], Path]:
         block = raw[start:end]
         fs = "squashfs" if block[:4] in (b"hsqs", b"sqsh") else (
             "ext" if block[1080:1082] == b"\x53\xef" else None)
+        rootfs_trace(f"ROOTFS_CANDIDATE partition={item['index']} start_sector={item['start']} "
+                     f"end_sector={item['end']} bytes={len(block)} magic={block[:8].hex()} "
+                     f"ext_magic={block[1080:1082].hex()} detected_format={fs or 'none'}")
         if not fs:
             continue
         candidate = work / f"partition-{item['index']}.img"
@@ -160,14 +173,14 @@ def locate_rootfs(raw: bytes, work: Path) -> tuple[dict[str, int | str], Path]:
             prefix = ["sudo"] if os.geteuid() != 0 and shutil.which("sudo") else []
             result = run(prefix + [unsquashfs, "-no-progress", "-d", str(root), str(candidate)], check=False)
             if result.returncode:
-                print(f"ROOTFS_PROBE partition={item['index']} format=squashfs rc={result.returncode}\n{result.stdout}",
-                      flush=True)
+                rootfs_trace(f"ROOTFS_PROBE partition={item['index']} format=squashfs "
+                             f"rc={result.returncode}\n{result.stdout}")
                 continue
             if (root / "etc/openwrt_release").is_file():
                 return {**item, "start_byte": start, "end_byte": end, "fs": fs,
                         "table": table_kind, "used": struct.unpack_from("<Q", block, 40)[0]}, root
-            print(f"ROOTFS_PROBE partition={item['index']} format=squashfs rc=0 missing=/etc/openwrt_release",
-                  flush=True)
+            rootfs_trace(f"ROOTFS_PROBE partition={item['index']} format=squashfs "
+                         "rc=0 missing=/etc/openwrt_release")
         else:
             result = debugfs(candidate, "cat /etc/openwrt_release", check=False)
             if "DISTRIB_ID" in result or "OPENWRT_RELEASE" in result:
@@ -175,8 +188,8 @@ def locate_rootfs(raw: bytes, work: Path) -> tuple[dict[str, int | str], Path]:
                 run([tool("debugfs"), "-R", f"rdump / {root}", str(candidate)])
                 return {**item, "start_byte": start, "end_byte": end, "fs": fs,
                         "table": table_kind}, root
-            print(f"ROOTFS_PROBE partition={item['index']} format=ext probe_output={result.stdout!r}",
-                  flush=True)
+            rootfs_trace(f"ROOTFS_PROBE partition={item['index']} format=ext "
+                         f"probe_output={result.stdout!r}")
     raise RuntimeError("no MBR/GPT partition contains an OpenWrt rootfs")
 
 
