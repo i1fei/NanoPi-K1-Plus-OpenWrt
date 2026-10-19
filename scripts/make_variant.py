@@ -154,8 +154,9 @@ def locate_rootfs(raw: bytes, work: Path) -> tuple[dict[str, int | str], Path]:
     table_kind, parts, _ = partitions(raw)
     work.mkdir(parents=True, exist_ok=True)
     for item in parts:
-        start, end = item["start"] * SECTOR, item["end"] * SECTOR
-        if end > len(raw) or end <= start:
+        start, declared_end = item["start"] * SECTOR, item["end"] * SECTOR
+        end = min(declared_end, len(raw))
+        if start >= len(raw) or end <= start:
             continue
         block = raw[start:end]
         fs = "squashfs" if block[:4] in (b"hsqs", b"sqsh") else (
@@ -178,7 +179,8 @@ def locate_rootfs(raw: bytes, work: Path) -> tuple[dict[str, int | str], Path]:
                 continue
             if (root / "etc/openwrt_release").is_file():
                 return {**item, "start_byte": start, "end_byte": end, "fs": fs,
-                        "table": table_kind, "used": struct.unpack_from("<Q", block, 40)[0]}, root
+                        "declared_end_byte": declared_end, "table": table_kind,
+                        "used": struct.unpack_from("<Q", block, 40)[0]}, root
             rootfs_trace(f"ROOTFS_PROBE partition={item['index']} format=squashfs "
                          "rc=0 missing=/etc/openwrt_release")
         else:
@@ -187,7 +189,7 @@ def locate_rootfs(raw: bytes, work: Path) -> tuple[dict[str, int | str], Path]:
                 root.mkdir()
                 run([tool("debugfs"), "-R", f"rdump / {root}", str(candidate)])
                 return {**item, "start_byte": start, "end_byte": end, "fs": fs,
-                        "table": table_kind}, root
+                        "declared_end_byte": declared_end, "table": table_kind}, root
             rootfs_trace(f"ROOTFS_PROBE partition={item['index']} format=ext "
                          f"probe_output={result.stdout!r}")
     raise RuntimeError("no MBR/GPT partition contains an OpenWrt rootfs")
@@ -279,17 +281,17 @@ def write_image(base_path: Path, output: Path, target: str, old: bytes, new: byt
                 raw_part = raw[int(part["start_byte"]):int(part["end_byte"])]
                 compressor, block_size, used = squashfs_options(raw_part)
                 old_padding = raw_part[used:]
-                if old_padding and len(set(old_padding)) != 1:
-                    raise RuntimeError("SquashFS partition padding is not a single repeated byte")
                 out_part = work / "new.squashfs"
                 prefix = ["sudo"] if os.geteuid() != 0 and shutil.which("sudo") else []
                 run(prefix + [tool("mksquashfs"), str(root), str(out_part), "-noappend",
                                   "-comp", compressor, "-b", str(block_size), "-no-progress"])
                 payload = out_part.read_bytes()
-                if len(payload) > int(part["end_byte"]) - int(part["start_byte"]):
-                    raise RuntimeError("rebuilt SquashFS exceeds original partition")
-                pad_byte = old_padding[:1] or b"\0"
-                payload += pad_byte * (int(part["end_byte"]) - int(part["start_byte"]) - len(payload))
+                available = int(part["end_byte"]) - int(part["start_byte"])
+                if len(payload) > available:
+                    raise RuntimeError("rebuilt SquashFS exceeds available image bytes")
+                payload += old_padding[:available - len(payload)]
+                if len(payload) < available:
+                    payload += (old_padding[-1:] or b"\0") * (available - len(payload))
             else:
                 candidate = work / "rootfs.ext"
                 candidate.write_bytes(raw[int(part["start_byte"]):int(part["end_byte"])])
@@ -328,7 +330,11 @@ def write_image(base_path: Path, output: Path, target: str, old: bytes, new: byt
         verify_pair(base_path, output, target, old, new, report=None)
         report.write_text("# make-report\n\nVerdict: PASS\n" +
                           f"base_sha256: {file_sha(base_path)}\noutput_sha256: {file_sha(output)}\n" +
-                          f"rootfs_format: {part['fs']}\ntarget: {target}\n", encoding="utf-8")
+                          f"rootfs_format: {part['fs']}\n" +
+                          f"rootfs_partition_declared_bytes: {int(part['declared_end_byte']) - int(part['start_byte'])}\n" +
+                          f"rootfs_partition_bytes_in_image: {int(part['end_byte']) - int(part['start_byte'])}\n" +
+                          f"squashfs_repacked: {str(part['fs'] == 'squashfs').lower()}\n" +
+                          f"target: {target}\n", encoding="utf-8")
     except Exception as exc:
         report.write_text(f"# make-report\n\nVerdict: FAIL\nerror: {exc}\n", encoding="utf-8")
         raise
@@ -371,7 +377,8 @@ def verify_pair(base_path: Path, compare_path: Path, target: str, old: bytes, ne
         if report:
             report.write_text("# verify-report\n\nVerdict: PASS\n" +
                               f"expanded_size: {len(a)}\nrootfs_changed_paths: {changed}\n" +
-                              f"outside_rootfs_equal: {outside}\nrootfs_target_metadata_equal: True\n",
+                              f"outside_rootfs_equal: {outside}\nrootfs_target_metadata_equal: True\n" +
+                              f"rootfs_format: {pa['fs']}\nsquashfs_repacked: {str(pa['fs'] == 'squashfs').lower()}\n",
                               encoding="utf-8")
     except Exception as exc:
         if report:
