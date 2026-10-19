@@ -277,18 +277,41 @@ def write_image(base_path: Path, output: Path, target: str, old: bytes, new: byt
             target_file.write_bytes(new)
             os.chmod(target_file, int(old_meta["mode"]))
             os.utime(target_file, ns=(target_file.stat().st_atime_ns, int(old_meta["mtime_ns"])))
+            for path, metadata in before_tree.items():
+                if metadata["kind"] == "dir":
+                    directory = root if path == "/" else root / path.lstrip("/")
+                    os.utime(directory, ns=(directory.stat().st_atime_ns,
+                                            int(metadata["mtime_ns"])))
             if part["fs"] == "squashfs":
                 raw_part = raw[int(part["start_byte"]):int(part["end_byte"])]
                 compressor, block_size, used = squashfs_options(raw_part)
                 old_padding = raw_part[used:]
                 out_part = work / "new.squashfs"
                 prefix = ["sudo"] if os.geteuid() != 0 and shutil.which("sudo") else []
-                run(prefix + [tool("mksquashfs"), str(root), str(out_part), "-noappend",
-                                  "-comp", compressor, "-b", str(block_size), "-no-progress"])
+                command = prefix + [tool("mksquashfs"), str(root), str(out_part), "-noappend",
+                                    "-comp", compressor, "-b", str(block_size), "-no-progress"]
+                squash_info = run(prefix + [tool("unsquashfs"), "-s",
+                                            str(work / f"partition-{part['index']}.img")],
+                                  check=False)
+                rootfs_trace(f"SQUASHFS_BASE used={used} available={len(raw_part)} "
+                             f"tail_bytes={len(old_padding)} tail_sha256={sha(old_padding)} "
+                             f"tail_unique_bytes={len(set(old_padding))} "
+                             f"tail_prefix={old_padding[:32].hex()!r} "
+                             f"unsquashfs_summary_rc={squash_info.returncode}\n"
+                             f"{squash_info.stdout}")
+                rootfs_trace("SQUASHFS_REBUILD_COMMAND=" + repr(command))
+                rebuilt = run(command, check=False)
+                rootfs_trace(f"SQUASHFS_REBUILD_EXIT={rebuilt.returncode}\n{rebuilt.stdout}")
+                if rebuilt.returncode:
+                    raise RuntimeError(f"mksquashfs failed ({rebuilt.returncode}):\n{rebuilt.stdout}")
                 payload = out_part.read_bytes()
                 available = int(part["end_byte"]) - int(part["start_byte"])
+                rootfs_trace(f"SQUASHFS_REBUILD_SIZE output={len(payload)} available={available} "
+                             f"original_used={used} original_tail={len(old_padding)}")
                 if len(payload) > available:
-                    raise RuntimeError("rebuilt SquashFS exceeds available image bytes")
+                    raise RuntimeError("rebuilt SquashFS exceeds available image bytes: "
+                                       f"output={len(payload)} available={available} "
+                                       f"original_used={used} original_tail={len(old_padding)}")
                 payload += old_padding[:available - len(payload)]
                 if len(payload) < available:
                     payload += (old_padding[-1:] or b"\0") * (available - len(payload))
