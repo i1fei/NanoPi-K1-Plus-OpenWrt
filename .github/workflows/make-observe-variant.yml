@@ -13,6 +13,36 @@ permissions:
   actions: read
 
 jobs:
+  validation-regressions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download base image for validation regressions
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          base_run_id=$(jq -r .base_run_id .github/variant-inputs.json)
+          image_glob=$(jq -r .image_glob .github/variant-inputs.json)
+          gh run download "$base_run_id" --repo "$GITHUB_REPOSITORY" \
+            --name NanoPi-K1-Plus-OpenWrt --dir work/base
+          mapfile -t images < <(find work/base -type f -name "$image_glob" -print | sort)
+          if [ "${#images[@]}" -ne 1 ]; then
+            printf 'need exactly one base image; found %s candidates:\n' "${#images[@]}" >&2
+            printf '%s\n' "${images[@]}" >&2
+            exit 1
+          fi
+          printf 'P2_BASE_IMAGE=%s\n' "${images[0]}"
+
+      - name: Run independent validation false-positive regressions
+        run: |
+          image=$(find work/base -type f -name "$(jq -r .image_glob .github/variant-inputs.json)" -print -quit)
+          python3 scripts/test-validation-regressions.py \
+            --image "$image" --old-revision b9e5348^
+
   variant:
     runs-on: ubuntu-latest
     steps:
@@ -26,7 +56,22 @@ jobs:
           sudo apt-get install -y e2fsprogs squashfs-tools
 
       - name: Run variant selftest first
-        run: sudo python3 scripts/selftest_variant.py
+        env:
+          VARIANT_DIAGNOSTICS_DIR: ${{ github.workspace }}/variant-diagnostics
+        run: |
+          set -o pipefail
+          mkdir -p variant-diagnostics
+          sudo --preserve-env=VARIANT_DIAGNOSTICS_DIR python3 scripts/selftest_variant.py \
+            2>&1 | tee variant-diagnostics/selftest.log
+          grep -q '^SQUASHFS_SELFTEST=PASS$' variant-diagnostics/selftest.log
+
+      - name: Preserve selftest diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: variant-selftest-diagnostics-${{ github.run_id }}
+          if-no-files-found: warn
+          path: variant-diagnostics/
 
       - name: Validate inputs
         id: inputs

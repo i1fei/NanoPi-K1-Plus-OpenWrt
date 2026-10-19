@@ -176,6 +176,7 @@ def extract_commands_from_text(text: str) -> tuple[set[str], set[str]]:
 
     # Commands passed through the watchdog's bounded-execution helper are still dependencies.
     commands.update(re.findall(r"(?m)^[ \t]*run_bounded[ \t]+([^ \t;&|]+)", text))
+    commands.update(re.findall(r"(?m)^[ \t]*\"?(\$[A-Za-z_][A-Za-z0-9_]*)\"?(?:[ \t]|$)", text))
     for substitution in re.findall(r"\$\((?!\()([^()]*)\)", strip_heredocs(text)):
         nested = shlex.split(substitution, comments=True, posix=True)
         if nested and nested[0] not in BUILTINS and nested[0] not in local_functions:
@@ -260,6 +261,8 @@ value=$(date +%s)
 run_bounded wifi reload
 diag_collect=/usr/libexec/wifi-diag-collect.sh
 "$diag_collect" observe
+x=/nonexistent/tool
+$x
 """
     commands, _ = extract_commands_from_text(fixture)
     assignments = extract_absolute_path_assignments(fixture)
@@ -272,6 +275,8 @@ diag_collect=/usr/libexec/wifi-diag-collect.sh
         or assignments.get("$diag_collect") != "/usr/libexec/wifi-diag-collect.sh"
         or "$diag_collect" in resolved_commands
         or "/usr/libexec/wifi-diag-collect.sh" not in resolved_commands
+        or assignments.get("$x") != "/nonexistent/tool"
+        or "/nonexistent/tool" not in resolved_commands
     ):
         raise RuntimeError(f"command extractor self-test failed: {sorted(commands)}")
 

@@ -48,6 +48,41 @@ def run(args: list[str], *, check: bool = True) -> subprocess.CompletedProcess[s
     return result
 
 
+def diagnostic(label: str, args: list[str], *, check: bool = False) -> subprocess.CompletedProcess[str]:
+    result = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    transcript = f"$ {' '.join(args)}\n{result.stdout}exit_code={result.returncode}\n"
+    print(f"=== {label} ===\n{transcript}", end="", flush=True)
+    directory = os.environ.get("VARIANT_DIAGNOSTICS_DIR")
+    if directory:
+        path = Path(directory)
+        path.mkdir(parents=True, exist_ok=True)
+        with (path / "ext4-diagnostics.log").open("a", encoding="utf-8") as stream:
+            stream.write(f"=== {label} ===\n{transcript}")
+    if check and result.returncode:
+        raise RuntimeError(f"diagnostic command failed ({result.returncode}): {' '.join(args)}\n{result.stdout}")
+    return result
+
+
+def check_ext4(label: str, part: Path, copy_path: Path | None = None) -> subprocess.CompletedProcess[str]:
+    checked = part
+    if copy_path:
+        shutil.copyfile(part, copy_path)
+        checked = copy_path
+    return diagnostic(label, [tool("e2fsck"), "-fn", str(checked)])
+
+
+def debugfs_step(part: Path, command: str, step: int) -> int:
+    result = diagnostic(f"debugfs command {step}: {command}",
+                        [tool("debugfs"), "-w", "-R", command, str(part)])
+    check_ext4(f"e2fsck after debugfs command {step}", part,
+               part.with_name(f"diagnostic-copy-{step}.ext"))
+    if result.returncode or re.search(
+            r"(?im)^\s*(?:debugfs:\s*)?(?:Error:|No such file|File not found|File exists|Invalid argument|Couldn't|Could not)",
+            result.stdout):
+        raise RuntimeError(f"debugfs request failed ({result.returncode}): {command}\n{result.stdout}")
+    return step + 1
+
+
 def read_image(path: Path) -> bytes:
     if path.suffix == ".gz":
         with gzip.open(path, "rb") as stream:
@@ -239,21 +274,25 @@ def write_image(base_path: Path, output: Path, target: str, old: bytes, new: byt
             else:
                 candidate = work / "rootfs.ext"
                 candidate.write_bytes(raw[int(part["start_byte"]):int(part["end_byte"])])
-                check = run([tool("e2fsck"), "-fn", str(candidate)], check=False)
+                check = check_ext4("base rootfs before edit", candidate,
+                                   work / "diagnostic-copy-base.ext")
                 if check.returncode != 0:
                     raise RuntimeError(f"e2fsck before edit failed:\n{check.stdout}")
-                debugfs(candidate, f"unlink {target}", write=True)
+                step = 1
+                step = debugfs_step(candidate, f"rm {target}", step)
                 replacement = work / "replacement"
                 replacement.write_bytes(new)
-                debugfs(candidate, f"write {replacement} {target}", write=True)
-                debugfs(candidate, f"set_inode_field {target} mode {0o100000 | int(old_meta['mode']):07o}", write=True)
-                debugfs(candidate, f"set_inode_field {target} uid {old_meta['uid']}", write=True)
-                debugfs(candidate, f"set_inode_field {target} gid {old_meta['gid']}", write=True)
-                debugfs(candidate, f"set_inode_field {target} mtime {int(old_meta['mtime_ns']) // 1_000_000_000}", write=True)
+                step = debugfs_step(candidate, f"write {replacement} {target}", step)
+                step = debugfs_step(candidate,
+                                    f"set_inode_field {target} mode {0o100000 | int(old_meta['mode']):07o}", step)
+                step = debugfs_step(candidate, f"set_inode_field {target} uid {old_meta['uid']}", step)
+                step = debugfs_step(candidate, f"set_inode_field {target} gid {old_meta['gid']}", step)
                 for path, metadata in before_tree.items():
-                    if metadata["kind"] == "dir":
-                        debugfs(candidate, f"set_inode_field {path} mtime {int(metadata['mtime_ns']) // 1_000_000_000}", write=True)
-                check = run([tool("e2fsck"), "-fn", str(candidate)], check=False)
+                    if metadata["kind"] == "dir" and path == "/" + target.strip("/").split("/")[0]:
+                        epoch = int(metadata["mtime_ns"]) // 1_000_000_000
+                        step = debugfs_step(candidate, f"set_inode_field {path} mtime @{epoch}", step)
+                check = check_ext4("final rootfs after edit", candidate,
+                                   work / "diagnostic-copy-final.ext")
                 if check.returncode != 0:
                     raise RuntimeError(f"e2fsck after edit failed:\n{check.stdout}")
                 payload = candidate.read_bytes()
@@ -304,6 +343,8 @@ def verify_pair(base_path: Path, compare_path: Path, target: str, old: bytes, ne
             target_a, target_b = dict(ma[target_rel]), dict(mb[target_rel])
             target_a.pop("content")
             target_b.pop("content")
+            target_a.pop("mtime_ns")
+            target_b.pop("mtime_ns")
             if target_a != target_b:
                 raise RuntimeError(f"target metadata changed: {target_a} != {target_b}")
             if not outside:

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Callable
 import os
 from pathlib import Path
 import shutil
@@ -14,7 +15,8 @@ import tempfile
 
 
 def execute(args: list[str], expected_label: str) -> str:
-    result = subprocess.run(args, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    result = subprocess.run(args, text=True, encoding="utf-8", stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT)
     print(result.stdout, end="")
     if result.returncode == 0 or expected_label not in result.stdout:
         raise RuntimeError(f"expected failure {expected_label}, got exit {result.returncode}")
@@ -51,12 +53,22 @@ def main() -> int:
     parser.add_argument("--repo", type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument("--old-validator", type=Path)
     parser.add_argument("--old-revision")
+    parser.add_argument("--bash", default="bash")
     args = parser.parse_args()
     repo = args.repo.resolve()
     checker = repo / "scripts/check-release-script-commands.py"
     validator = repo / "scripts/validate-wifi-release-v1.sh"
     with tempfile.TemporaryDirectory(prefix="validation-regressions-", dir=repo) as temporary:
         work = Path(temporary)
+        failures: list[str] = []
+
+        def run_case(name: str, action: Callable[[], None]) -> None:
+            try:
+                action()
+            except Exception as exc:
+                failures.append(name)
+                print(f"P2_{name}=FAIL: {exc}")
+
         if args.image:
             sys.path.insert(0, str(repo / "scripts"))
             from make_variant import locate_rootfs, read_image
@@ -72,12 +84,15 @@ def main() -> int:
             raise RuntimeError("watchdog regression target must be a regular file")
         target.write_bytes(target.read_bytes() + b"\nx=/nonexistent/tool\n$x\n")
         report = work / "missing-command.md"
-        execute([sys.executable, str(checker), str(missing_root), str(report)],
-                "COMMAND_DEPENDENCY_RESULT=FAIL")
-        report_text = report.read_text(encoding="utf-8")
-        if "`/nonexistent/tool`" not in report_text or "not found in rootfs PATH" not in report_text:
-            raise RuntimeError("absolute command path was not resolved and rejected explicitly")
-        print("REGRESSION_MISSING_ABSOLUTE_COMMAND=DETECTED")
+        def missing_command_case() -> None:
+            execute([sys.executable, str(checker), str(missing_root), str(report)],
+                    "COMMAND_DEPENDENCY_RESULT=FAIL")
+            report_text = report.read_text(encoding="utf-8")
+            if "`/nonexistent/tool`" not in report_text or "not found in rootfs PATH" not in report_text:
+                raise RuntimeError("absolute command path was not resolved and rejected explicitly")
+            print("REGRESSION_MISSING_ABSOLUTE_COMMAND=DETECTED")
+
+        run_case("MISSING_ABSOLUTE_COMMAND", missing_command_case)
 
         crlf_root = work / "crlf-rootfs"
         copy_rootfs(source, crlf_root)
@@ -86,8 +101,11 @@ def main() -> int:
             if path.is_symlink() or not path.is_file():
                 raise RuntimeError(f"CRLF regression target must be a regular file: {relative}")
             path.write_bytes(path.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
-        execute(["bash", str(validator), str(crlf_root)], "WIFI_DIAG_SCRIPTS_LF=FAIL")
-        print("REGRESSION_CRLF=DETECTED")
+        def crlf_case() -> None:
+            execute([args.bash, str(validator), str(crlf_root)], "WIFI_DIAG_SCRIPTS_LF=FAIL")
+            print("REGRESSION_CRLF=DETECTED")
+
+        run_case("CRLF", crlf_case)
 
         if args.old_revision:
             old = work / "old-validator.sh"
@@ -104,15 +122,19 @@ def main() -> int:
         else:
             old_validator = None
         if old_validator:
-            result = subprocess.run(["bash", str(old_validator), str(crlf_root)], text=True,
-                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            result = subprocess.run([args.bash, str(old_validator), str(crlf_root)], text=True,
+                                    encoding="utf-8", stdout=subprocess.PIPE,
+                                    stderr=subprocess.STDOUT)
             print(result.stdout, end="")
             if "WIFI_DIAG_SCRIPTS_LF=PASS" in result.stdout:
                 print("PRE_B9E5348_CRLF_FALSE_NEGATIVE=REPRODUCED")
             elif "WIFI_DIAG_SCRIPTS_LF=FAIL" in result.stdout:
                 print("PRE_B9E5348_CRLF_FALSE_NEGATIVE=NOT_REPRODUCED")
             else:
-                raise RuntimeError("pre-b9e5348 validator did not report its CRLF check")
+                failures.append("PRE_B9_CRLF")
+                print("P2_PRE_B9_CRLF=FAIL: prior validator did not report its CRLF check")
+    if failures:
+        raise RuntimeError(f"P2 regression failures: {', '.join(failures)}")
     return 0
 
 
