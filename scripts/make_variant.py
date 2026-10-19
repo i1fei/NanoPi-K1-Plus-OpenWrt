@@ -293,8 +293,6 @@ def write_image(base_path: Path, output: Path, target: str, old: bytes, new: byt
                 squash_info = run(prefix + [tool("unsquashfs"), "-s",
                                             str(work / f"partition-{part['index']}.img")],
                                   check=False)
-                if compressor == "xz":
-                    command.extend(("-Xbcj", "arm64"))
                 if "Xattrs are not stored" in squash_info.stdout:
                     command.append("-no-xattrs")
                 rootfs_trace(f"SQUASHFS_BASE used={used} available={len(raw_part)} "
@@ -309,16 +307,29 @@ def write_image(base_path: Path, output: Path, target: str, old: bytes, new: byt
                 if rebuilt.returncode:
                     raise RuntimeError(f"mksquashfs failed ({rebuilt.returncode}):\n{rebuilt.stdout}")
                 payload = out_part.read_bytes()
-                available = int(part["end_byte"]) - int(part["start_byte"])
-                rootfs_trace(f"SQUASHFS_REBUILD_SIZE output={len(payload)} available={available} "
+                rebuilt_info = run(prefix + [tool("unsquashfs"), "-s", str(out_part)], check=False)
+                rootfs_trace(f"SQUASHFS_REPACKED_SUMMARY rc={rebuilt_info.returncode}\n{rebuilt_info.stdout}")
+                rebuilt_options = squashfs_options(payload)
+                if rebuilt_info.returncode or rebuilt_options[:2] != (compressor, block_size):
+                    raise RuntimeError("rebuilt SquashFS compressor/block differs from source: "
+                                       f"expected={compressor}/{block_size} "
+                                       f"actual={rebuilt_options[:2]}\n{rebuilt_info.stdout}")
+                declared = int(part["declared_end_byte"]) - int(part["start_byte"])
+                rootfs_data_in_image = int(part["end_byte"]) - int(part["start_byte"])
+                output_payload = payload + old_padding
+                rootfs_trace(f"SQUASHFS_REBUILD_SIZE output={len(payload)} "
+                             f"payload_with_tail={len(output_payload)} "
+                             f"declared_partition_bytes={declared} "
+                             f"rootfs_data_in_image={rootfs_data_in_image} "
                              f"original_used={used} original_tail={len(old_padding)}")
-                if len(payload) > available:
-                    raise RuntimeError("rebuilt SquashFS exceeds available image bytes: "
-                                       f"output={len(payload)} available={available} "
+                if len(output_payload) > declared:
+                    raise RuntimeError("rebuilt SquashFS plus preserved tail exceeds declared partition: "
+                                       f"output={len(payload)} tail={len(old_padding)} declared={declared} "
                                        f"original_used={used} original_tail={len(old_padding)}")
-                payload += old_padding[:available - len(payload)]
-                if len(payload) < available:
-                    payload += (old_padding[-1:] or b"\0") * (available - len(payload))
+                suffix = raw[int(part["end_byte"]):]
+                if suffix:
+                    output_payload += bytes(declared - len(output_payload))
+                payload = output_payload
             else:
                 candidate = work / "rootfs.ext"
                 candidate.write_bytes(raw[int(part["start_byte"]):int(part["end_byte"])])
@@ -345,8 +356,9 @@ def write_image(base_path: Path, output: Path, target: str, old: bytes, new: byt
                     raise RuntimeError(f"e2fsck after edit failed:\n{check.stdout}")
                 payload = candidate.read_bytes()
 
-            out_raw = bytearray(raw)
-            out_raw[int(part["start_byte"]):int(part["end_byte"])] = payload
+            root_start = int(part["start_byte"])
+            root_end = int(part["end_byte"])
+            out_raw = bytearray(raw[:root_start] + payload + raw[root_end:])
             output.parent.mkdir(parents=True, exist_ok=True)
             with output.open("wb") as stream:
                 if base_path.suffix == ".gz":
@@ -360,6 +372,7 @@ def write_image(base_path: Path, output: Path, target: str, old: bytes, new: byt
                           f"rootfs_format: {part['fs']}\n" +
                           f"rootfs_partition_declared_bytes: {int(part['declared_end_byte']) - int(part['start_byte'])}\n" +
                           f"rootfs_partition_bytes_in_image: {int(part['end_byte']) - int(part['start_byte'])}\n" +
+                          f"output_image_bytes: {output.stat().st_size}\n" +
                           f"squashfs_repacked: {str(part['fs'] == 'squashfs').lower()}\n" +
                           f"target: {target}\n", encoding="utf-8")
     except Exception as exc:
@@ -371,15 +384,25 @@ def verify_pair(base_path: Path, compare_path: Path, target: str, old: bytes, ne
                 report: Path | None) -> None:
     try:
         a, b = read_image(base_path), read_image(compare_path)
-        if len(a) != len(b):
-            raise RuntimeError(f"expanded image sizes differ: {len(a)} != {len(b)}")
         with tempfile.TemporaryDirectory(prefix="verify-variant-") as temp:
             work = Path(temp)
             pa, ra = locate_rootfs(a, work / "a")
             pb, rb = locate_rootfs(b, work / "b")
-            if pa["table"] != pb["table"] or pa["start_byte"] != pb["start_byte"] or pa["end_byte"] != pb["end_byte"]:
+            if (pa["table"] != pb["table"] or pa["start_byte"] != pb["start_byte"] or
+                    pa["declared_end_byte"] != pb["declared_end_byte"]):
                 raise RuntimeError("partition table/rootfs partition bounds differ")
-            outside, regions = outside_hashes(a, b, int(pa["start_byte"]), int(pa["end_byte"]))
+            root_start = int(pa["start_byte"])
+            root_end = int(pa["declared_end_byte"])
+            root_last = root_end == max(item["end"] * SECTOR for item in partitions(a)[1])
+            if len(a) != len(b):
+                if pa["fs"] != "squashfs" or pb["fs"] != "squashfs" or not root_last:
+                    raise RuntimeError(f"expanded image sizes differ outside supported last SquashFS partition: {len(a)} != {len(b)}")
+                prefix_equal = a[:root_start] == b[:root_start]
+                suffix_equal = a[root_end:] == b[root_end:]
+                outside = prefix_equal and suffix_equal
+                regions = [] if outside else [(0, root_start, sha(a[:root_start]), sha(b[:root_start]))]
+            else:
+                outside, regions = outside_hashes(a, b, root_start, min(root_end, len(a)))
             ma, mb = tree_manifest(ra), tree_manifest(rb)
             changed = []
             for name in sorted(set(ma) | set(mb)):
@@ -392,6 +415,16 @@ def verify_pair(base_path: Path, compare_path: Path, target: str, old: bytes, ne
                 raise RuntimeError(f"rootfs changed paths are not exactly the target: {changed}")
             if (ra / target.lstrip("/")).read_bytes() != old or (rb / target.lstrip("/")).read_bytes() != new:
                 raise RuntimeError("target content does not match expected old/new values")
+            tail_equal = True
+            if pa["fs"] == "squashfs":
+                part_a = a[root_start:min(root_end, len(a))]
+                part_b = b[root_start:min(root_end, len(b))]
+                used_a = squashfs_options(part_a)[2]
+                used_b = squashfs_options(part_b)[2]
+                tail_a, tail_b = part_a[used_a:], part_b[used_b:]
+                tail_equal = tail_a == tail_b
+                if not tail_equal:
+                    raise RuntimeError(f"bytes after SquashFS differ: {len(tail_a)} != {len(tail_b)}")
             target_a, target_b = dict(ma[target_rel]), dict(mb[target_rel])
             target_a.pop("content")
             target_b.pop("content")
@@ -403,8 +436,10 @@ def verify_pair(base_path: Path, compare_path: Path, target: str, old: bytes, ne
                 raise RuntimeError(f"bytes outside rootfs differ: {regions}")
         if report:
             report.write_text("# verify-report\n\nVerdict: PASS\n" +
-                              f"expanded_size: {len(a)}\nrootfs_changed_paths: {changed}\n" +
+                              f"expanded_size_base: {len(a)}\nexpanded_size_compare: {len(b)}\n" +
+                              f"rootfs_changed_paths: {changed}\n" +
                               f"outside_rootfs_equal: {outside}\nrootfs_target_metadata_equal: True\n" +
+                              f"squashfs_tail_equal: {tail_equal}\n" +
                               f"rootfs_format: {pa['fs']}\nsquashfs_repacked: {str(pa['fs'] == 'squashfs').lower()}\n",
                               encoding="utf-8")
     except Exception as exc:

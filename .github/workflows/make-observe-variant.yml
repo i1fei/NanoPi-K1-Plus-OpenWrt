@@ -24,7 +24,18 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Read variant mode
+        id: mode
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          with open('.github/variant-inputs.json', encoding='utf-8') as stream:
+              data = json.load(stream)
+          print(f"diff_only={str(data.get('diff_only', False)).lower()}")
+          PY
+
       - name: Download base image for validation regressions
+        if: steps.mode.outputs.diff_only != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -41,6 +52,7 @@ jobs:
           printf 'P2_BASE_IMAGE=%s\n' "${images[0]}"
 
       - name: Run independent validation false-positive regressions
+        if: steps.mode.outputs.diff_only != 'true'
         run: |
           image=$(find work/base -type f -name '*ext4-sdcard.img.gz' -print -quit)
           python3 scripts/test-validation-regressions.py \
@@ -53,12 +65,24 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Read variant mode
+        id: mode
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          with open('.github/variant-inputs.json', encoding='utf-8') as stream:
+              data = json.load(stream)
+          print(f"diff_only={str(data.get('diff_only', False)).lower()}")
+          PY
+
       - name: Install image inspection tools
+        if: steps.mode.outputs.diff_only != 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y e2fsprogs squashfs-tools
 
       - name: Run variant selftest first
+        if: steps.mode.outputs.diff_only != 'true'
         env:
           VARIANT_DIAGNOSTICS_DIR: ${{ github.workspace }}/variant-diagnostics
         run: |
@@ -84,9 +108,13 @@ jobs:
               raise SystemExit('target_path must be absolute')
           if data['target_path'] != '/etc/wifi-watchdog.mode':
               raise SystemExit('unexpected target_path')
+          diff_only = data.get('diff_only', False)
+          if not isinstance(diff_only, bool):
+              raise SystemExit('diff_only must be a JSON boolean')
           for key in ('base_run_id', 'compare_run_id', 'image_glob', 'target_path', 'old_content', 'new_content'):
               value = str(data[key]).replace('\n', r'\n')
               print(f'{key}={value}')
+          print(f'diff_only={str(diff_only).lower()}')
           PY
 
       - name: Download existing build artifacts
@@ -116,6 +144,7 @@ jobs:
           done
 
       - name: Make Observe variant from Recover bytes
+        if: steps.inputs.outputs.diff_only != 'true'
         env:
           VARIANT_DIAGNOSTICS_DIR: ${{ github.workspace }}/variant-diagnostics
           TARGET_PATH: ${{ steps.inputs.outputs.target_path }}
@@ -128,7 +157,7 @@ jobs:
             --new-content "$NEW_CONTENT" --report make-report.md
 
       - name: Preserve selftest and make diagnostics
-        if: always()
+        if: always() && steps.inputs.outputs.diff_only != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: variant-diagnostics-${{ github.run_id }}
@@ -136,6 +165,7 @@ jobs:
           path: variant-diagnostics/
 
       - name: Independently verify variant
+        if: steps.inputs.outputs.diff_only != 'true'
         env:
           TARGET_PATH: ${{ steps.inputs.outputs.target_path }}
           OLD_CONTENT: ${{ steps.inputs.outputs.old_content }}
@@ -153,9 +183,11 @@ jobs:
             --report ci-pair-diff.md
 
       - name: Write checksums
+        if: steps.inputs.outputs.diff_only != 'true'
         run: sha256sum work/observe.img.gz work/base/image.img.gz work/reference/image.img.gz > SHA256SUMS
 
       - name: Upload reports and variant
+        if: steps.inputs.outputs.diff_only != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: observe-variant-${{ github.run_id }}
@@ -168,3 +200,11 @@ jobs:
             verify-report.md
             ci-pair-diff.md
             SHA256SUMS
+
+      - name: Upload diff-only report
+        if: steps.inputs.outputs.diff_only == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: observe-variant-diff-${{ github.run_id }}
+          if-no-files-found: error
+          path: ci-pair-diff.md

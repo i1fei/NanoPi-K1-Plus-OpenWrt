@@ -4,5 +4,6 @@
   "image_glob": "NanoPi-K1-Plus-sunxi-cortexa53.img.gz",
   "target_path": "/etc/wifi-watchdog.mode",
   "old_content": "recover",
-  "new_content": "observe"
+  "new_content": "observe",
+  "diff_only": true
 }
