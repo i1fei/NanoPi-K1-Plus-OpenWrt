@@ -7,6 +7,10 @@ on:
     paths:
       - '.github/variant-inputs.json'
       - '.github/workflows/make-observe-variant.yml'
+      - 'scripts/make_variant.py'
+      - 'scripts/selftest_variant.py'
+      - 'scripts/test-validation-regressions.py'
+      - 'scripts/check-release-script-commands.py'
 
 permissions:
   contents: read
