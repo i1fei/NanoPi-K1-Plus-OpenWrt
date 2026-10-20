@@ -16,6 +16,84 @@ $results = [ordered]@{
 	COM9 = 'FAIL'
 }
 
+function Write-ComProcessAudit {
+	try {
+		$all = @(Get-CimInstance Win32_Process -ErrorAction Stop)
+		$pattern = '(?i)COM9|serial|SerialPort|pyserial|putty|plink|teraterm|minicom|com-bridge'
+		$matches = @($all | Where-Object {
+			$_.ProcessId -in 59808, 59976 -or $_.Name -match $pattern -or $_.CommandLine -match $pattern
+		})
+		foreach ($proc in $matches) {
+			[PSCustomObject]@{
+				ProcessId = $proc.ProcessId
+				ParentProcessId = $proc.ParentProcessId
+				Name = $proc.Name
+				CommandLine = $proc.CommandLine
+				CreationDate = $proc.CreationDate
+				ExecutablePath = $proc.ExecutablePath
+			} | Format-List
+			$current = $proc
+			for ($depth = 0; $depth -lt 12 -and $current.ParentProcessId; $depth++) {
+				$parent = $all | Where-Object ProcessId -eq $current.ParentProcessId | Select-Object -First 1
+				if (-not $parent) { break }
+				Write-Host "PARENT_CHAIN depth=$($depth + 1) PID=$($parent.ProcessId) PPID=$($parent.ParentProcessId) NAME=$($parent.Name) CREATED=$($parent.CreationDate) PATH=$($parent.ExecutablePath) COMMAND=$($parent.CommandLine)"
+				$current = $parent
+			}
+		}
+	} catch {
+		Write-Host "PROCESS_AUDIT_EXCEPTION=$($_.Exception.GetType().FullName): $($_.Exception.Message)"
+	}
+	try {
+		Write-Host "COM_PORT_NAMES=$([string]::Join(',', [System.IO.Ports.SerialPort]::GetPortNames()))"
+	} catch {
+		Write-Host "COM_PORT_NAMES_EXCEPTION=$($_.Exception.GetType().FullName): $($_.Exception.Message)"
+	}
+}
+
+function Get-DevicePropertyData([string]$InstanceId, [string]$KeyName) {
+	try {
+		(Get-PnpDeviceProperty -InstanceId $InstanceId -KeyName $KeyName -ErrorAction Stop).Data
+	} catch { $null }
+}
+
+function Write-ComPnpState {
+	try {
+		$devices = @(Get-PnpDevice -Class Ports -ErrorAction Stop | Where-Object FriendlyName -match '\(COM9\)')
+		if (-not $devices) { Write-Host 'COM9_PNP_DEVICE=NOT_FOUND' }
+		foreach ($device in $devices) {
+			[PSCustomObject]@{
+				FriendlyName = $device.FriendlyName
+				Status = $device.Status
+				InstanceId = $device.InstanceId
+				ProblemCode = Get-DevicePropertyData $device.InstanceId 'DEVPKEY_Device_ProblemCode'
+				DriverDescription = Get-DevicePropertyData $device.InstanceId 'DEVPKEY_Device_DriverDesc'
+				DriverVersion = Get-DevicePropertyData $device.InstanceId 'DEVPKEY_Device_DriverVersion'
+				DriverProvider = Get-DevicePropertyData $device.InstanceId 'DEVPKEY_Device_DriverProvider'
+			} | Format-List
+			$parentId = Get-DevicePropertyData $device.InstanceId 'DEVPKEY_Device_Parent'
+			for ($depth = 0; $parentId -and $depth -lt 8; $depth++) {
+				$parent = Get-PnpDevice -InstanceId $parentId -ErrorAction SilentlyContinue
+				$present = $false
+				if ($parent) {
+					$present = [bool](Get-DevicePropertyData $parentId 'DEVPKEY_Device_IsPresent')
+					[PSCustomObject]@{
+						USBParentDepth = $depth + 1
+						FriendlyName = $parent.FriendlyName
+						Status = $parent.Status
+						Present = $present
+						InstanceId = $parent.InstanceId
+						ProblemCode = Get-DevicePropertyData $parentId 'DEVPKEY_Device_ProblemCode'
+					} | Format-List
+				}
+				if ($parentId -match '^USB\\VID_' -or $parentId -match '^USB\\ROOT_HUB') { break }
+				$parentId = Get-DevicePropertyData $parentId 'DEVPKEY_Device_Parent'
+			}
+		}
+	} catch {
+		Write-Host "COM9_PNP_EXCEPTION=$($_.Exception.GetType().FullName): $($_.Exception.Message)"
+	}
+}
+
 Start-Transcript -LiteralPath $logPath -Force | Out-Null
 try {
 	Write-Host "PREFLIGHT_LOG=$logPath"
@@ -47,9 +125,10 @@ try {
 	}
 
 	Write-Host '=== COM9 read-only 3-second probe (115200 8N1) ==='
+	Write-ComPnpState
 	$port = $null
 	try {
-		$port = [System.IO.Ports.SerialPort]::new('COM9', 115200, [System.IO.Ports.Parity]::None, 8, [System.IO.Ports.StopBits]::One)
+		$port = [System.IO.Ports.SerialPort]::new('COM9', 115200)
 		$port.ReadTimeout = 100
 		$port.Open()
 		$timer = [Diagnostics.Stopwatch]::StartNew()
@@ -65,28 +144,19 @@ try {
 		$results.COM9 = 'PASS'
 	} catch {
 		$exception = $_.Exception
-		Write-Host "COM9_EXCEPTION_TYPE=$($exception.GetType().FullName)"
-		Write-Host "COM9_EXCEPTION_MESSAGE=$($exception.Message)"
-		if ($exception -is [UnauthorizedAccessException] -or $exception.Message -match '(?i)access is denied|unauthorized|拒绝访问') {
-			Write-Host '=== COM9 owner process details ==='
-			foreach ($id in 59808, 59976) {
-				try {
-					$proc = Get-CimInstance Win32_Process -Filter "ProcessId = $id"
-					if ($proc) {
-						$parent = Get-CimInstance Win32_Process -Filter "ProcessId = $($proc.ParentProcessId)"
-						[PSCustomObject]@{
-							ProcessId = $proc.ProcessId
-							CommandLine = $proc.CommandLine
-							ParentProcessId = $proc.ParentProcessId
-						ParentCommandLine = $parent.CommandLine
-							StartTime = $proc.CreationDate
-							StartedByThisPreflight = $false
-							HistoricalStarter = 'Unknown from process metadata'
-						} | Format-List
-					} else { Write-Host "PID=$id NOT_FOUND" }
-				} catch { Write-Host "PID=$id QUERY_EXCEPTION=$($_.Exception.GetType().FullName): $($_.Exception.Message)" }
-			}
+		$level = 0
+		while ($exception -and $level -lt 10) {
+			Write-Host "COM9_EXCEPTION[$level]_TYPE=$($exception.GetType().FullName)"
+			Write-Host "COM9_EXCEPTION[$level]_MESSAGE=$($exception.Message)"
+			$exception = $exception.InnerException
+			$level++
 		}
+		Write-Host '=== COM9 failure process audit ==='
+		Write-ComProcessAudit
+		Write-Host '=== Visible serial-capable applications (read-only) ==='
+		Get-Process -ErrorAction SilentlyContinue |
+			Where-Object { $_.ProcessName -match '(?i)putty|terminal|serial|arduino|teraterm|tterm|securecrt|realterm|minicom|plink|xshell|mobaxterm|tabby|windterm' } |
+			Select-Object Id,ProcessName,MainWindowTitle,StartTime,Path | Format-Table -AutoSize
 	} finally {
 		if ($port -and $port.IsOpen) { $port.Close() }
 	}
