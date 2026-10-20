@@ -132,6 +132,9 @@ printf 'tag=%s\nreason=%s\n' "$tag" "$2" > "$base/bundle-sim/$tag/00-meta.txt"
 if [ "$tag" = observe ]; then
 	mkdir -p "$WD_SYSNET/phy0-ap0" "$WD_SYSNET/br-lan/brif"
 fi
+if [ "$tag" = pre-reboot ] && [ "${WD_TEST_HEALTHY_ON_RECHECK:-0}" = 1 ]; then
+	mkdir -p "$WD_SYSNET/phy0-ap0" "$WD_SYSNET/br-lan/brif"
+fi
 exit 0
 EOF
 
@@ -191,6 +194,7 @@ echo "== A: observe mode =="
 setup A observe
 run_watchdog "$S" 0 "$T/watchdog" 0 1 || true
 ck "A threshold reached logged" "grep -q 'THRESHOLD-REACHED' '$S/diag/watchdog.log'"
+ck "A predicate rc line logged" "grep -Eq 'HEALTH hostapd_rc=0 ap_discovery_rc=1 ap_info_rc=1 ubus_rc=0 ubus_up_rc=0 ubus_ifname_rc=1 .*healthy_rc=1' '$S/diag/watchdog.log'"
 ck "A observe bundle written" "ls -d '$S'/diag/bundle-*/observe >/dev/null 2>&1"
 ck "A NO reload was issued" "! grep -q '^reload' '$T/wifi-calls'"
 ck "A self-recovery logged" "grep -q 'health recovered' '$S/diag/watchdog.log'"
@@ -229,6 +233,21 @@ echo "== D: observe mode at reboot stage =="
 setup D observe
 run_watchdog "$S" 0 "$T/watchdog-stage2" 1 || true
 ck "D observe did not call sync or reboot" "! grep -Eq '^(sync|reboot)$' '$T/recovery-actions'"
+
+echo "== E: stage 3 healthy recheck aborts reboot =="
+setup E recover
+WD_TEST_INTERVAL=1 WD_TEST_THRESHOLD=3 WD_TEST_COMMAND_TIMEOUT=5 \
+	WD_TEST_RELOAD_GRACE=1 WD_TESTDIR="$T" WD_TEST_CREATE_ON_SLEEP=0 \
+	WD_TEST_HEALTHY_ON_RECHECK=1 WD_TEST_STOP_AFTER_RECOVERY=0 \
+	WD_TEST_STOP_AFTER_OBSERVE=0 WD_SYSNET="$S/sysnet" WIFI_DIAG_BASE="$S/diag" \
+	WD_MODEFILE="$S/mode" WD_PROVISION_MARKER="$S/provisioned" \
+	WD_DISABLED_MARKER="$S/disabled" WD_REBOOT_STAMP="$S/reboot-stamp" \
+	WD_LIB_FUNCTIONS="$T/lib-functions.sh" WD_CFGDIR="$T/cfg" \
+	WD_COLLECT="$T/collector" WD_KMODLOADER="$T/bin/kmodloader" \
+	PATH="$T/bin:$PATH" sh "$T/watchdog-stage2"
+ck "E stage 3 abort logged" "grep -q 'stage3 aborted: healthy on recheck' '$S/diag/watchdog.log'"
+ck "E stage 3 did not call sync or reboot" "! grep -Eq '^(sync|reboot)$' '$T/recovery-actions'"
+ck "E aborted stage 3 did not consume reboot cooldown" "[ ! -e '$S/reboot-stamp' ]"
 
 if [ "$fail" -eq 0 ]; then
 	echo ALL PASS

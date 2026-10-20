@@ -7,6 +7,8 @@ failures=0
 stage=0
 last_recovery=0
 recovery_count=0
+health_checks=0
+last_health_signature=
 
 diag_base=/root/wifi-diag
 diag_collect=/usr/libexec/wifi-diag-collect.sh
@@ -54,20 +56,48 @@ kernel_ap_healthy() {
 	ap_interface=$(iw dev 2>/dev/null | awk '
 		/^Interface / { name=$2 }
 		/^[[:space:]]*type AP$/ { if (name != "") { print name; exit } }')
-	[ -n "$ap_interface" ] || return 1
-	iw dev "$ap_interface" info 2>/dev/null | grep -q '^[[:space:]]*type AP$'
+	[ -n "$ap_interface" ]
+	ap_discovery_rc=$?
+	if [ "$ap_discovery_rc" -eq 0 ]; then
+		iw dev "$ap_interface" info 2>/dev/null | grep -q '^[[:space:]]*type AP$'
+		ap_info_rc=$?
+	else
+		ap_info_rc=1
+	fi
+	[ "$ap_discovery_rc" -eq 0 ] && [ "$ap_info_rc" -eq 0 ]
 }
 
 netifd_ap_healthy() {
+	ubus_rc=1
+	ubus_up_rc=1
+	ubus_ifname_rc=1
 	status=$(ubus call network.wireless status 2>/dev/null) || return 1
-	printf '%s\n' "$status" | grep -q '"up"[[:space:]]*:[[:space:]]*true' || return 1
+	ubus_rc=0
+	printf '%s\n' "$status" | grep -q '"up"[[:space:]]*:[[:space:]]*true'
+	ubus_up_rc=$?
 	printf '%s\n' "$status" | grep -q '"ifname"[[:space:]]*:'
+	ubus_ifname_rc=$?
+	[ "$ubus_up_rc" -eq 0 ] && [ "$ubus_ifname_rc" -eq 0 ]
 }
 
 healthy() {
-	pidof hostapd >/dev/null 2>&1 || return 1
-	kernel_ap_healthy || return 1
+	pidof hostapd >/dev/null 2>&1
+	hostapd_rc=$?
+	kernel_ap_healthy
+	kernel_rc=$?
 	netifd_ap_healthy
+	netifd_rc=$?
+	[ "$hostapd_rc" -eq 0 ] && [ "$kernel_rc" -eq 0 ] && [ "$netifd_rc" -eq 0 ] && [ "$ubus_rc" -eq 0 ] && [ "$ubus_up_rc" -eq 0 ] && [ "$ubus_ifname_rc" -eq 0 ]
+	healthy_rc=$?
+	uci show wireless 2>/dev/null | grep -q "\.disabled='1'$"
+	admin_disabled_rc=$?
+	health_checks=$((health_checks + 1))
+	health_signature="hostapd_rc=$hostapd_rc ap_discovery_rc=$ap_discovery_rc ap_info_rc=$ap_info_rc ubus_rc=$ubus_rc ubus_up_rc=$ubus_up_rc ubus_ifname_rc=$ubus_ifname_rc admin_disabled_rc=$admin_disabled_rc healthy_rc=$healthy_rc"
+	if [ "$health_signature" != "$last_health_signature" ] || [ $((health_checks % 10)) -eq 0 ]; then
+		printf '%s up=%ss mode=%s HEALTH %s\n' "$(date '+%F %T')" "$(cut -d. -f1 /proc/uptime)" "$(watchdog_mode)" "$health_signature" >> "$diag_base/watchdog.log" 2>/dev/null || true
+		last_health_signature=$health_signature
+	fi
+	return "$healthy_rc"
 }
 
 administrator_disabled() {
@@ -211,9 +241,15 @@ while :; do
 			;;
 		*)
 			allow_recovery || exit 0
-			allow_reboot || exit 0
 			"$diag_collect" pre-reboot "stage=$stage"
 			event "collect tag=pre-reboot rc=$?"
+			if healthy; then
+				failures=0
+				stage=0
+				event 'stage3 aborted: healthy on recheck'
+				continue
+			fi
+			allow_reboot || exit 0
 			event 'recovery stage 3: reboot'
 			sync
 			reboot
