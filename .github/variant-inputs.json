@@ -1,6 +1,6 @@
 {
-  "base_run_id": "38939238849",
-  "compare_run_id": "38939280906",
+  "base_run_id": "39408824234",
+  "compare_run_id": "",
   "image_glob": "NanoPi-K1-Plus-sunxi-cortexa53.img.gz",
   "target_path": "/etc/wifi-watchdog.mode",
   "old_content": "recover",

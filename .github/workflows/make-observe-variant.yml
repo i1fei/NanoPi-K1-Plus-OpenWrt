@@ -101,9 +101,11 @@ jobs:
           import json, os, re
           with open('.github/variant-inputs.json', encoding='utf-8') as stream:
               data = json.load(stream)
-          for key in ('base_run_id', 'compare_run_id'):
-              if not re.fullmatch(r'[0-9]+', str(data[key])):
-                  raise SystemExit(f'{key} must contain digits only')
+          if not re.fullmatch(r'[0-9]+', str(data['base_run_id'])):
+              raise SystemExit('base_run_id must contain digits only')
+          compare_run_id = str(data.get('compare_run_id', '')).strip()
+          if compare_run_id and not re.fullmatch(r'[0-9]+', compare_run_id):
+              raise SystemExit('compare_run_id must be empty or contain digits only')
           if not data['target_path'].startswith('/'):
               raise SystemExit('target_path must be absolute')
           if data['target_path'] != '/etc/wifi-watchdog.mode':
@@ -111,9 +113,10 @@ jobs:
           diff_only = data.get('diff_only', False)
           if not isinstance(diff_only, bool):
               raise SystemExit('diff_only must be a JSON boolean')
-          for key in ('base_run_id', 'compare_run_id', 'image_glob', 'target_path', 'old_content', 'new_content'):
+          for key in ('base_run_id', 'image_glob', 'target_path', 'old_content', 'new_content'):
               value = str(data[key]).replace('\n', r'\n')
               print(f'{key}={value}')
+          print(f'compare_run_id={compare_run_id}')
           print(f'diff_only={str(diff_only).lower()}')
           PY
 
@@ -125,7 +128,11 @@ jobs:
           IMAGE_GLOB: ${{ steps.inputs.outputs.image_glob }}
         run: |
           set -euo pipefail
-          for item in "base:$BASE_RUN_ID" "reference:$COMPARE_RUN_ID"; do
+          runs=("base:$BASE_RUN_ID")
+          if [ -n "$COMPARE_RUN_ID" ]; then
+            runs+=("reference:$COMPARE_RUN_ID")
+          fi
+          for item in "${runs[@]}"; do
             name=${item%%:*}
             run_id=${item#*:}
             dest="work/$name"
@@ -177,6 +184,7 @@ jobs:
             --new-content "$NEW_CONTENT" --report verify-report.md
 
       - name: Compare existing Observe build for information
+        if: steps.inputs.outputs.compare_run_id != ''
         run: |
           sudo python3 scripts/make_variant.py diff \
             --base work/base/image.img.gz --compare work/reference/image.img.gz \
@@ -184,7 +192,12 @@ jobs:
 
       - name: Write checksums
         if: steps.inputs.outputs.diff_only != 'true'
-        run: sha256sum work/observe.img.gz work/base/image.img.gz work/reference/image.img.gz > SHA256SUMS
+        run: |
+          files=(work/observe.img.gz work/base/image.img.gz)
+          if [ -f work/reference/image.img.gz ]; then
+            files+=(work/reference/image.img.gz)
+          fi
+          sha256sum "${files[@]}" > SHA256SUMS
 
       - name: Upload reports and variant
         if: steps.inputs.outputs.diff_only != 'true'
