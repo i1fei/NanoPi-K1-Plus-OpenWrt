@@ -400,7 +400,8 @@ if (-not $ResumePostObservation -and -not $ResumePassiveObservation -and -not $R
 			$newBootCount = [regex]::Matches($segment, $bootPattern).Count
 			if ($newBootCount -gt $bootCount) { $bootCount = $newBootCount; $passive.Restart(); $script:sshWaitResolved = $false; $script:sshAvailableDuringPassive = $false; Add-Event 'PASSIVE_WINDOW_RESTARTED' "new_kernel_boot_count=$bootCount; observing this boot for ${passiveLimitSeconds}s" }
 			Probe-SSHDuringPassive $passive.Elapsed.TotalSeconds
-			Start-Sleep -Seconds ([Math]::Min(10, [math]::Ceiling($passiveLimitSeconds - $passive.Elapsed.TotalSeconds)))
+			$sleepSeconds = [int][math]::Max(0, [Math]::Min(10, [math]::Ceiling($passiveLimitSeconds - $passive.Elapsed.TotalSeconds)))
+			if ($sleepSeconds -gt 0) { Start-Sleep -Seconds $sleepSeconds }
 		}
 		$passive.Stop()
 		Add-Event "PASSIVE_${passiveLimitSeconds}S_COMPLETE" "elapsed_since_latest_kernel_boot=$([math]::Round($passive.Elapsed.TotalSeconds,1))s; kernel_boots_seen=$bootCount"
@@ -468,7 +469,8 @@ if (-not $ResumePostObservation -and -not $ResumePassiveObservation -and -not $R
 			Add-Event 'PASSIVE_WINDOW_RESTARTED' "new_kernel_boot_count=$bootCount; observing this boot for ${passiveLimitSeconds}s"
 		}
 		Probe-SSHDuringPassive $passive.Elapsed.TotalSeconds
-		Start-Sleep -Seconds ([Math]::Min(10, [math]::Ceiling($passiveLimitSeconds - $passive.Elapsed.TotalSeconds)))
+		$sleepSeconds = [int][math]::Max(0, [Math]::Min(10, [math]::Ceiling($passiveLimitSeconds - $passive.Elapsed.TotalSeconds)))
+		if ($sleepSeconds -gt 0) { Start-Sleep -Seconds $sleepSeconds }
 	}
 	$passive.Stop()
 	Add-Event "PASSIVE_${passiveLimitSeconds}S_COMPLETE" "elapsed_since_latest_kernel_boot=$([math]::Round(([DateTimeOffset]::Now - $bootWall).TotalSeconds,1))s; kernel_boots_seen=$bootCount"
