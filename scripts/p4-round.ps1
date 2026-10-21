@@ -31,6 +31,7 @@ $script:recorderRestartAttempts = 0
 $script:sshWaitResolved = $false
 $script:sshAvailableDuringPassive = $false
 
+New-Item -ItemType Directory -Path $roundDir -Force | Out-Null
 if (-not (Test-Path -LiteralPath $verifiedKnownHosts)) {
 	$firstRoundKnownHosts = Join-Path $evidenceRoot 'P4\recover-r394088-01\known_hosts.postboot-verified'
 	if (Test-Path -LiteralPath $firstRoundKnownHosts) {
