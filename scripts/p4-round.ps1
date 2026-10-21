@@ -148,8 +148,8 @@ function Send-Serial([string]$Command, [string]$Marker, [int]$TimeoutSeconds = 6
 		if ($tail.Length -gt $before) {
 			$delta = $tail.Substring($before)
 			$markerSeen = $delta -match "\\r\\n$([regex]::Escape($Marker))\\r\\n|RX $([regex]::Escape($Marker))(?:\\r\\n|$)"
-			$hostKeyCommandFinished = $Command.StartsWith('dropbearkey -y -f ') -and $delta.Contains('root@nanopi-k1plus:~#')
-			if ($markerSeen -or $hostKeyCommandFinished) {
+			$shellCommandFinished = $Command -notmatch '(^|[;&\s])(reboot|sysupgrade)([;&\s]|$)' -and $delta -match 'root@[^\s]+:~#'
+			if ($markerSeen -or $shellCommandFinished) {
 				$watch.Stop()
 				return [PSCustomObject]@{ Offset = $before; Elapsed = $watch.Elapsed.TotalSeconds; Text = $delta }
 			}
@@ -190,7 +190,7 @@ function Wake-SerialConsole {
 	$before = (Get-Item -LiteralPath $serialLog).Length
 	$file = Join-Path $commandDir (('{0:D8}-{1}.cmd' -f [DateTimeOffset]::Now.ToUnixTimeMilliseconds(), [guid]::NewGuid().ToString('N')))
 	[IO.File]::WriteAllText($file, [Environment]::NewLine, [Text.UTF8Encoding]::new($false))
-	$prompt = Wait-SerialPattern 'root@nanopi-k1plus:~#' $before 20
+	$prompt = Wait-SerialPattern 'root@[^\s]+:~#' $before 60
 	Add-Event 'SERIAL_CONSOLE_READY' "wake_elapsed=$([math]::Round($prompt.Elapsed,2))s"
 }
 
