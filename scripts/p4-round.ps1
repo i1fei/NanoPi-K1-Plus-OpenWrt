@@ -393,9 +393,8 @@ if (-not $ResumePostObservation -and -not $ResumePassiveObservation -and -not $R
 			Add-Event 'FIRSTBOOT_ISSUED_OVER_SSH' "ssh_exit=$($firstboot.ExitCode)"
 		} else {
 			Add-Event 'SSH_UNAVAILABLE_FIRSTBOOT_FALLBACK' 'using COM9 only after SSH probe failed'
-			$promptOffset = (Get-Item -LiteralPath $serialLog).Length
-			$prompt = Wait-SerialPattern 'root@nanopi-k1plus:~#|BusyBox v' $promptOffset 240
-			Add-Event 'FIRST_BOOT_CONSOLE_READY'
+			Wake-SerialConsole
+			Add-Event 'FIRST_BOOT_CONSOLE_READY' 'COM9 newline wake and shell prompt verified'
 			$clearMarker = "P4_CLEAR_$([guid]::NewGuid().ToString('N'))"
 			$clear = Send-Serial "firstboot -y; echo $clearMarker" $clearMarker 180
 			Add-Event 'FIRSTBOOT_DONE' "channel=COM9 elapsed=$([math]::Round($clear.Elapsed,2))s"
