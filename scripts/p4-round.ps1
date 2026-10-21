@@ -287,11 +287,16 @@ if (-not $ResumePostObservation -and -not $ResumePassiveObservation -and -not $R
 	$previous = [IO.File]::ReadAllText((Join-Path $roundDir 'round.log'))
 	if ($previous -notmatch 'FINAL_REBOOT_SEEN passive_T0=(\S+)') { throw 'Resume refused: this round has no recorded final reboot T0.' }
 	$bootWall = [DateTimeOffset]::Parse($Matches[1])
-	Add-Event 'ROUND_RESUME_POST_OBSERVATION' "mode=$Mode round=$Round rebootT0=$($bootWall.ToString('o'))"
 	$serialText = Get-SerialText
-	$restartIndex = $serialText.LastIndexOf('reboot: Restarting system', [StringComparison]::Ordinal)
-	if ($restartIndex -lt 0) { throw 'Resume refused: final reboot marker is absent from COM9 log.' }
-	$script:resumeBootOffset = $restartIndex + 'reboot: Restarting system'.Length + 4
+	$rebootPattern = '\[(?<wall>2026-[^\]]+)\] RX \[\s*(?<up>\d+\.\d+)\] reboot: Restarting system'
+	$finalReboot = $null
+	foreach ($candidate in [regex]::Matches($serialText, $rebootPattern)) {
+		$candidateWall = [DateTimeOffset]::Parse($candidate.Groups['wall'].Value)
+		if ($candidateWall -ge $bootWall.AddSeconds(-30) -and $candidateWall -le $bootWall) { $finalReboot = $candidate }
+	}
+	if (-not $finalReboot) { throw 'Resume refused: cannot match the final reboot T0 to its COM9 reboot marker.' }
+	$script:resumeBootOffset = $finalReboot.Index + $finalReboot.Length + 4
+	Add-Event 'ROUND_RESUME_POST_OBSERVATION' "mode=$Mode round=$Round rebootT0=$($bootWall.ToString('o')) marker_uptime=$($finalReboot.Groups['up'].Value.Trim())"
 }
 
 	try {
