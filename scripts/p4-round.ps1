@@ -190,8 +190,28 @@ function Wake-SerialConsole {
 	$before = (Get-Item -LiteralPath $serialLog).Length
 	$file = Join-Path $commandDir (('{0:D8}-{1}.cmd' -f [DateTimeOffset]::Now.ToUnixTimeMilliseconds(), [guid]::NewGuid().ToString('N')))
 	[IO.File]::WriteAllText($file, [Environment]::NewLine, [Text.UTF8Encoding]::new($false))
-	$prompt = Wait-SerialPattern 'root@[^\s]+:~#' $before 60
-	Add-Event 'SERIAL_CONSOLE_READY' "wake_elapsed=$([math]::Round($prompt.Elapsed,2))s"
+	$watch = [Diagnostics.Stopwatch]::StartNew()
+	$secondWakeSent = $false
+	while ($watch.Elapsed.TotalSeconds -lt 60) {
+		Assert-SerialRecorder
+		$text = Get-SerialText
+		if ($text.Length -gt $before) {
+			$delta = $text.Substring($before)
+			if ($delta -match 'root@[^\s]+:~#') {
+				$watch.Stop()
+				Add-Event 'SERIAL_CONSOLE_READY' "wake_elapsed=$([math]::Round($watch.Elapsed.TotalSeconds,2))s"
+				return
+			}
+			if (-not $secondWakeSent -and ($watch.Elapsed.TotalSeconds -ge 10 -or $delta -match 'Please press Enter to activate this console')) {
+				$file = Join-Path $commandDir (('{0:D8}-{1}.cmd' -f [DateTimeOffset]::Now.ToUnixTimeMilliseconds(), [guid]::NewGuid().ToString('N')))
+				[IO.File]::WriteAllText($file, [Environment]::NewLine, [Text.UTF8Encoding]::new($false))
+				$secondWakeSent = $true
+				Add-Event 'SERIAL_CONSOLE_SECOND_WAKE' 'no shell prompt after first empty line'
+			}
+		}
+		Start-Sleep -Milliseconds 250
+	}
+	throw 'Timed out waiting for serial shell prompt after one retry.'
 }
 
 function Update-VerifiedKnownHost {
