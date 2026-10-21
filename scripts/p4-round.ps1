@@ -187,7 +187,7 @@ function Wake-SerialConsole {
 	Assert-SerialRecorder
 	$before = (Get-Item -LiteralPath $serialLog).Length
 	$file = Join-Path $commandDir (('{0:D8}-{1}.cmd' -f [DateTimeOffset]::Now.ToUnixTimeMilliseconds(), [guid]::NewGuid().ToString('N')))
-	[IO.File]::WriteAllText($file, " `n", [Text.UTF8Encoding]::new($false))
+	[IO.File]::WriteAllText($file, [Environment]::NewLine, [Text.UTF8Encoding]::new($false))
 	$prompt = Wait-SerialPattern 'root@nanopi-k1plus:~#' $before 20
 	Add-Event 'SERIAL_CONSOLE_READY' "wake_elapsed=$([math]::Round($prompt.Elapsed,2))s"
 }

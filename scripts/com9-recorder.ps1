@@ -37,10 +37,8 @@ try {
 				Sort-Object Name | ForEach-Object {
 					$commandFile = $_.FullName
 					$command = [System.IO.File]::ReadAllText($commandFile).TrimEnd("`r", "`n")
-					if ($command) {
-						Write-Record 'TX' $command
-						$port.Write($command + "`r`n")
-					}
+					Write-Record 'TX' $(if ($command) { $command } else { '<blank-line>' })
+					$port.Write($command + "`r`n")
 					Remove-Item -LiteralPath $commandFile -Force
 				}
 
