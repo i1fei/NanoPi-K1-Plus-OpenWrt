@@ -262,12 +262,10 @@ if ($actualHash -ne $expectedHash) { throw "Image SHA mismatch: expected $expect
 New-Item -ItemType Directory -Path $roundDir -Force | Out-Null
 if (-not $ResumeAfterSysupgrade -and -not $ResumePostObservation -and -not $ResumePassiveObservation) { Update-VerifiedKnownHost }
 if (-not $ResumePostObservation -and -not $ResumePassiveObservation -and -not $ResumeAfterSysupgrade) {
-	$flashed = 0
-	if (Test-Path (Join-Path $evidenceRoot 'P3/sysupgrade-flash.log')) { $flashed++ }
+	$flashed = 6
 	foreach ($roundLog in Get-ChildItem (Join-Path $evidenceRoot 'P4') -Filter 'round.log' -Recurse -File -ErrorAction SilentlyContinue) {
 		if (Select-String -LiteralPath $roundLog.FullName -Pattern 'SYSUPGRADE_START' -Quiet) { $flashed++ }
 	}
-	$flashed = [Math]::Max(6, $flashed)
 	if ($flashed -ge 24) { throw "24-flash limit reached; current recorded count including P3: $flashed" }
 	Add-Event 'ROUND_START' "mode=$Mode round=$Round prior_flash_count=$flashed image_sha256=$actualHash"
 	} elseif ($ResumeAfterSysupgrade) {
@@ -330,14 +328,21 @@ if (-not $ResumePostObservation -and -not $ResumePassiveObservation -and -not $R
 		$passive.Stop()
 		Add-Event "PASSIVE_${passiveLimitSeconds}S_COMPLETE" "elapsed_since_latest_kernel_boot=$([math]::Round($passive.Elapsed.TotalSeconds,1))s; kernel_boots_seen=$bootCount; no serial interaction during resumed window"
 	} elseif ($ResumeAfterSysupgrade) {
-		Wake-SerialConsole
-		Add-Event 'FIRST_BOOT_CONSOLE_READY' 'resumed after sysupgrade; no repeated flash'
-		$clearMarker = "P4_CLEAR_$([guid]::NewGuid().ToString('N'))"
-		$clear = Send-Serial "firstboot -y; echo $clearMarker" $clearMarker 180
-		Add-Event 'FIRSTBOOT_DONE' "elapsed=$([math]::Round($clear.Elapsed,2))s"
-		$rebootMarker = "P4_REBOOT_$([guid]::NewGuid().ToString('N'))"
+		Add-Event 'ROUND_RESUME_AFTER_SYSUPGRADE' 'SSH-first; no repeated flash'
 		$offset = (Get-Item -LiteralPath $serialLog).Length
-		$null = Send-Serial "sync; echo $rebootMarker; reboot" $rebootMarker 30
+		$sshReady = (Invoke-SSH 'true' (Join-Path $roundDir 'ssh-firstboot-probe.log') 8).ExitCode -eq 0
+		if ($sshReady) {
+			$firstboot = Invoke-SSH 'firstboot -y; sync; reboot' (Join-Path $roundDir 'firstboot-ssh.log') 30
+			Add-Event 'FIRSTBOOT_ISSUED_OVER_SSH' "ssh_exit=$($firstboot.ExitCode)"
+		} else {
+			Add-Event 'SSH_UNAVAILABLE_FIRSTBOOT_FALLBACK' 'using COM9 only after SSH probe failed'
+			Wake-SerialConsole
+			$clearMarker = "P4_CLEAR_$([guid]::NewGuid().ToString('N'))"
+			$clear = Send-Serial "firstboot -y; echo $clearMarker" $clearMarker 180
+			Add-Event 'FIRSTBOOT_DONE' "channel=COM9 elapsed=$([math]::Round($clear.Elapsed,2))s"
+			$rebootMarker = "P4_REBOOT_$([guid]::NewGuid().ToString('N'))"
+			$null = Send-Serial "sync; echo $rebootMarker; reboot" $rebootMarker 30
+		}
 		$boot = Wait-SerialPattern 'reboot: Restarting system' $offset 90
 		$boot.Offset = Get-AfterRebootOffset $boot.Text $offset
 		$bootWall = [DateTimeOffset]::Now
@@ -382,17 +387,23 @@ if (-not $ResumePostObservation -and -not $ResumePassiveObservation -and -not $R
 		$bootWall = [DateTimeOffset]::Now
 		Add-Event 'ROLLBACK_REBOOT_SEEN' "passive_T0=$($bootWall.ToString('o'))"
 	} else {
-		$promptOffset = (Get-Item -LiteralPath $serialLog).Length
-		$prompt = Wait-SerialPattern 'root@nanopi-k1plus:~#|BusyBox v' $promptOffset 240
-		Add-Event 'FIRST_BOOT_CONSOLE_READY'
-
-		$clearMarker = "P4_CLEAR_$([guid]::NewGuid().ToString('N'))"
-		$clear = Send-Serial "firstboot -y; echo $clearMarker" $clearMarker 180
-		Add-Event 'FIRSTBOOT_DONE' "elapsed=$([math]::Round($clear.Elapsed,2))s"
-		$rebootMarker = "P4_REBOOT_$([guid]::NewGuid().ToString('N'))"
 		$offset = (Get-Item -LiteralPath $serialLog).Length
-		$rebootCommand = Send-Serial "sync; echo $rebootMarker; reboot" $rebootMarker 30
-		$kernel = Wait-SerialPattern 'reboot: Restarting system' $offset 90
+		$sshReady = (Invoke-SSH 'true' (Join-Path $roundDir 'ssh-firstboot-probe.log') 8).ExitCode -eq 0
+		if ($sshReady) {
+			$firstboot = Invoke-SSH 'firstboot -y; sync; reboot' (Join-Path $roundDir 'firstboot-ssh.log') 30
+			Add-Event 'FIRSTBOOT_ISSUED_OVER_SSH' "ssh_exit=$($firstboot.ExitCode)"
+		} else {
+			Add-Event 'SSH_UNAVAILABLE_FIRSTBOOT_FALLBACK' 'using COM9 only after SSH probe failed'
+			$promptOffset = (Get-Item -LiteralPath $serialLog).Length
+			$prompt = Wait-SerialPattern 'root@nanopi-k1plus:~#|BusyBox v' $promptOffset 240
+			Add-Event 'FIRST_BOOT_CONSOLE_READY'
+			$clearMarker = "P4_CLEAR_$([guid]::NewGuid().ToString('N'))"
+			$clear = Send-Serial "firstboot -y; echo $clearMarker" $clearMarker 180
+			Add-Event 'FIRSTBOOT_DONE' "channel=COM9 elapsed=$([math]::Round($clear.Elapsed,2))s"
+			$rebootMarker = "P4_REBOOT_$([guid]::NewGuid().ToString('N'))"
+			$null = Send-Serial "sync; echo $rebootMarker; reboot" $rebootMarker 30
+		}
+		$kernel = Wait-SerialPattern 'reboot: Restarting system' $offset 180
 		$boot = [PSCustomObject]@{ Offset = (Get-AfterRebootOffset $kernel.Text $offset); Text = $kernel.Text; Elapsed = $kernel.Elapsed }
 		$bootWall = [DateTimeOffset]::Now
 		Add-Event 'FINAL_REBOOT_SEEN' "passive_T0=$($bootWall.ToString('o')) marker_elapsed=$([math]::Round($kernel.Elapsed,2))s"
