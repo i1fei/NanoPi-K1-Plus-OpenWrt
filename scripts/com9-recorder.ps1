@@ -1,7 +1,8 @@
 param(
 	[Parameter(Mandatory = $true)][string]$LogPath,
 	[Parameter(Mandatory = $true)][string]$CommandDirectory,
-	[int]$RetryMilliseconds = 1000
+	[int]$RetryMilliseconds = 1000,
+	[ValidateRange(1, 60)][int]$HeartbeatSeconds = 10
 )
 
 $ErrorActionPreference = 'Stop'
@@ -18,9 +19,10 @@ function Write-Record([string]$Direction, [string]$Text) {
 }
 
 $port = $null
-$reader = $null
+$exitReason = 'normal-stop'
 try {
-	Write-Record 'INFO' 'RECORDER_START port=COM9 baud=115200 format=8N1'
+	Write-Record 'INFO' "RECORDER_START pid=$PID port=COM9 baud=115200 format=8N1"
+	$lastHeartbeat = [DateTimeOffset]::UtcNow
 	while ($true) {
 		try {
 			if (-not $port -or -not $port.IsOpen) {
@@ -54,13 +56,21 @@ try {
 			}
 			Start-Sleep -Milliseconds $RetryMilliseconds
 		}
+		if (([DateTimeOffset]::UtcNow - $lastHeartbeat).TotalSeconds -ge $HeartbeatSeconds) {
+			Write-Record 'INFO' "HEARTBEAT pid=$PID"
+			$lastHeartbeat = [DateTimeOffset]::UtcNow
+		}
 	}
+} catch {
+	$exitReason = 'exception={0}: {1}' -f $_.Exception.GetType().FullName, $_.Exception.Message
+	Write-Record 'ERROR' $exitReason
+	throw
 } finally {
 	if ($port) {
 		try { if ($port.IsOpen) { $port.Close() } } catch {}
 		$port.Dispose()
 	}
-	Write-Record 'INFO' 'RECORDER_STOP'
+	Write-Record 'INFO' "RECORDER_EXIT pid=$PID reason=$exitReason"
 	$mutex.ReleaseMutex()
 	$mutex.Dispose()
 }
