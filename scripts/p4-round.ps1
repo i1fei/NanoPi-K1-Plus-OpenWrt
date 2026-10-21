@@ -147,7 +147,9 @@ function Send-Serial([string]$Command, [string]$Marker, [int]$TimeoutSeconds = 6
 		$tail = Get-SerialText
 		if ($tail.Length -gt $before) {
 			$delta = $tail.Substring($before)
-			if ($delta -match "\\r\\n$([regex]::Escape($Marker))\\r\\n|RX $([regex]::Escape($Marker))(?:\\r\\n|$)") {
+			$markerSeen = $delta -match "\\r\\n$([regex]::Escape($Marker))\\r\\n|RX $([regex]::Escape($Marker))(?:\\r\\n|$)"
+			$hostKeyCommandFinished = $Command.StartsWith('dropbearkey -y -f ') -and $delta.Contains('root@nanopi-k1plus:~#')
+			if ($markerSeen -or $hostKeyCommandFinished) {
 				$watch.Stop()
 				return [PSCustomObject]@{ Offset = $before; Elapsed = $watch.Elapsed.TotalSeconds; Text = $delta }
 			}
@@ -314,7 +316,6 @@ if (-not $ResumePostObservation -and -not $ResumePassiveObservation -and -not $R
 	if ($ResumePostObservation) {
 		$boot = [PSCustomObject]@{ Offset = $script:resumeBootOffset; Text = ''; Elapsed = 0 }
 		Add-Event "PASSIVE_${passiveLimitSeconds}S_PRIOR_RUN" 'retained; no flash/reboot repeated'
-		Wake-SerialConsole
 	} elseif ($ResumePassiveObservation) {
 		$boot = [PSCustomObject]@{ Offset = $script:resumeBootOffset; Text = ''; Elapsed = 0 }
 		Add-Event "PASSIVE_${passiveLimitSeconds}S_RESUMED" "observation restarts from resume; no serial interaction until ${passiveLimitSeconds}s"
@@ -465,6 +466,13 @@ if (-not $ResumePostObservation -and -not $ResumePassiveObservation -and -not $R
 		return
 	}
 
+	if (-not $script:sshAvailableDuringPassive -and $ResumePostObservation) {
+		$resumeSsh = Invoke-SSH 'true' (Join-Path $roundDir 'ssh-resume-post-observation.log') 8
+		if ($resumeSsh.ExitCode -eq 0) {
+			$script:sshAvailableDuringPassive = $true
+			Add-Event 'SSH_AVAILABLE_AFTER_OBSERVATION' 'strict host-key and public-key authentication passed; COM9 left passive'
+		}
+	}
 	if (-not $script:sshAvailableDuringPassive) {
 	$hostMarker = "P4_HOSTKEY_$([guid]::NewGuid().ToString('N'))"
 	Wake-SerialConsole
