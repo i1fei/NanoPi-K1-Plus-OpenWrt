@@ -21,7 +21,8 @@ $tracker = Join-Path $evidenceRoot 'P3-P4-20261019.md'
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $roundName = if ($Mode -eq 'rollback') { 'rollback-stop-condition' } elseif ($Mode -eq 'recover') { 'recover-r394088-{0:d2}' -f $Round } else { 'observe-r394165-{0:d2}' -f $Round }
 $roundDir = Join-Path $evidenceRoot "P4\$roundName"
-$verifiedKnownHosts = Join-Path $evidenceRoot 'P4\known_hosts.verified'
+$knownHostsSource = Join-Path $evidenceRoot 'P4\known_hosts.verified'
+$verifiedKnownHosts = Join-Path $roundDir 'known_hosts.verified'
 $remoteImage = "/tmp/p4-$Mode-$Round.img.gz"
 $scriptStart = [DateTimeOffset]::Now
 $passiveLimitSeconds = if ($Mode -eq 'observe') { 600 } else { 900 }
@@ -34,6 +35,8 @@ if (-not (Test-Path -LiteralPath $verifiedKnownHosts)) {
 	$firstRoundKnownHosts = Join-Path $evidenceRoot 'P4\recover-r394088-01\known_hosts.postboot-verified'
 	if (Test-Path -LiteralPath $firstRoundKnownHosts) {
 		Copy-Item -LiteralPath $firstRoundKnownHosts -Destination $verifiedKnownHosts
+	} elseif (Test-Path -LiteralPath $knownHostsSource) {
+		Copy-Item -LiteralPath $knownHostsSource -Destination $verifiedKnownHosts
 	} elseif (Test-Path -LiteralPath (Join-Path $env:USERPROFILE '.ssh\known_hosts')) {
 		Copy-Item -LiteralPath (Join-Path $env:USERPROFILE '.ssh\known_hosts') -Destination $verifiedKnownHosts
 	} else {
@@ -184,6 +187,7 @@ function Update-VerifiedKnownHost {
 		return
 	}
 	$marker = "P4_HOSTKEY_PRE_$([guid]::NewGuid().ToString('N'))"
+	Wake-SerialConsole
 	$serialResult = Send-Serial "dropbearkey -y -f /etc/dropbear/dropbear_ed25519_host_key; echo $marker" $marker 30
 	[IO.File]::WriteAllText((Join-Path $roundDir 'hostkey-preflash-com9-transcript.log'), $serialResult.Text, [Text.UTF8Encoding]::new($false))
 	$rxPayloads = [regex]::Matches($serialResult.Text, '(?m)^\[[^\]]+\] RX (.*)$') | ForEach-Object { $_.Groups[1].Value }
@@ -203,18 +207,10 @@ function Update-VerifiedKnownHost {
 	$hostLine = Get-Content -LiteralPath $tempHosts -ErrorAction SilentlyContinue | Where-Object { $_ -match '^192\.168\.1\.1\s+ssh-ed25519\s+' } | Select-Object -First 1
 	if (-not $sshFp.Success -or -not $hostLine) { throw 'SSH did not provide an ED25519 key in the preflash host-key probe.' }
 	if ($sshFp.Groups[1].Value -ne $serialFp.Value) { throw "Host-key mismatch; COM9=$($serialFp.Value), SSH=$($sshFp.Groups[1].Value). known_hosts unchanged." }
-	$knownHosts = $verifiedKnownHosts
-	$existingHost = @(& $sshKeygen -F 192.168.1.1 -f $knownHosts 2>$null) -join "`n"
-	$existingKey = [regex]::Match($existingHost, 'ssh-ed25519\s+([A-Za-z0-9+/]+={0,2})')
 	$newKey = [regex]::Match($hostLine, 'ssh-ed25519\s+([A-Za-z0-9+/]+={0,2})')
 	if (-not $newKey.Success) { throw 'Cannot parse the SSH ED25519 key line.' }
-	if ($existingKey.Success -and $existingKey.Groups[1].Value -eq $newKey.Groups[1].Value) {
-		'known_hosts already contains the fingerprint verified by COM9 and SSH.' | Set-Content -LiteralPath (Join-Path $roundDir 'known-host-remove-preflash.log')
-	} else {
-		& $sshKeygen -R 192.168.1.1 -f $knownHosts 2>&1 | Set-Content -LiteralPath (Join-Path $roundDir 'known-host-remove-preflash.log')
-		if ($LASTEXITCODE -ne 0) { throw 'ssh-keygen -R failed after matching COM9/SSH fingerprints.' }
-		Add-Content -LiteralPath $knownHosts -Value $hostLine -Encoding ascii
-	}
+	[IO.File]::WriteAllText($verifiedKnownHosts, $hostLine + "`n", [Text.ASCIIEncoding]::new())
+	'Per-round known_hosts set only after COM9/SSH fingerprint match.' | Set-Content -LiteralPath (Join-Path $roundDir 'known-host-refresh.log')
 	Add-Event 'PREFLASH_HOSTKEY_MATCH' "COM9=$($serialFp.Value) SSH=$($sshFp.Groups[1].Value)"
 	$authProbe = Invoke-SSH 'true' (Join-Path $roundDir 'preflash-ssh-auth-probe.log') 5
 	if ($authProbe.ExitCode -ne 0) {
@@ -263,7 +259,9 @@ New-Item -ItemType Directory -Path $roundDir -Force | Out-Null
 if (-not $ResumeAfterSysupgrade -and -not $ResumePostObservation -and -not $ResumePassiveObservation) { Update-VerifiedKnownHost }
 if (-not $ResumePostObservation -and -not $ResumePassiveObservation -and -not $ResumeAfterSysupgrade) {
 	$flashed = 6
-	foreach ($roundLog in Get-ChildItem (Join-Path $evidenceRoot 'P4') -Filter 'round.log' -Recurse -File -ErrorAction SilentlyContinue) {
+	$strictRoundLogs = Get-ChildItem (Join-Path $evidenceRoot 'P4') -Filter 'round.log' -Recurse -File -ErrorAction SilentlyContinue |
+		Where-Object { $_.Directory.Name -match '^(recover-r394088|observe-r394165)-\d{2}$' }
+	foreach ($roundLog in $strictRoundLogs) {
 		if (Select-String -LiteralPath $roundLog.FullName -Pattern 'SYSUPGRADE_START' -Quiet) { $flashed++ }
 	}
 	if ($flashed -ge 24) { throw "24-flash limit reached; current recorded count including P3: $flashed" }
@@ -478,19 +476,10 @@ if (-not $ResumePostObservation -and -not $ResumePassiveObservation -and -not $R
 	Add-Event 'HOSTKEY_FINGERPRINTS' "COM9=$serialFingerprint SSH=$scanFingerprint"
 	if ($serialFingerprint -ne $scanFingerprint) { throw 'Host-key mismatch; known_hosts not changed and no SSH session attempted.' }
 
-	$knownHosts = $verifiedKnownHosts
-	Copy-Item -LiteralPath $knownHosts -Destination (Join-Path $roundDir 'known_hosts.before') -Force -ErrorAction SilentlyContinue
-	$existingHost = @(& $sshKeygen -F 192.168.1.1 -f $knownHosts 2>$null) -join "`n"
-	$existingKey = [regex]::Match($existingHost, 'ssh-ed25519\s+([A-Za-z0-9+/]+={0,2})')
 	$newKey = [regex]::Match($keyscanLine, 'ssh-ed25519\s+([A-Za-z0-9+/]+={0,2})')
 	if (-not $newKey.Success) { throw 'Cannot parse the SSH ED25519 key line.' }
-	if ($existingKey.Success -and $existingKey.Groups[1].Value -eq $newKey.Groups[1].Value) {
-		'known_hosts already contains the fingerprint verified by COM9 and SSH.' | Set-Content -LiteralPath (Join-Path $roundDir 'known-host-remove.log')
-	} else {
-		& $sshKeygen -R 192.168.1.1 -f $knownHosts 2>&1 | Set-Content -LiteralPath (Join-Path $roundDir 'known-host-remove.log')
-		if ($LASTEXITCODE -ne 0) { throw 'ssh-keygen -R failed.' }
-		Add-Content -LiteralPath $knownHosts -Value $keyscanLine -Encoding ascii
-	}
+	[IO.File]::WriteAllText($verifiedKnownHosts, $keyscanLine + "`n", [Text.ASCIIEncoding]::new())
+	'Per-round known_hosts set only after COM9/SSH fingerprint match.' | Set-Content -LiteralPath (Join-Path $roundDir 'known-host-refresh.log')
 	}
 	$publicKeyPath = "$privateKey.pub"
 	if (-not (Test-Path -LiteralPath $publicKeyPath)) { throw "SSH public key missing: $publicKeyPath" }
@@ -523,7 +512,7 @@ if (-not $ResumePostObservation -and -not $ResumePassiveObservation -and -not $R
 	Add-Event 'SSH_AVAILABLE' "T+${sshAvailableAt}s"
 
 	$expectedWatchdogHash = '50FCBEC9F1C37F2199F8C4F8802E1FC057DD7C0A3CE5EF16358158A0AED1C780'
-	$watchdogGate = Invoke-SSH 'sha256sum /usr/sbin/k1plus-wifi-watchdog; grep -c "stage3 aborted" /usr/sbin/k1plus-wifi-watchdog; echo MODE; cat /etc/wifi-watchdog.mode; uptime; iw dev; ls -l /root /root/wifi-diag; ls -l /root/WATCHDOG-DISABLED.txt /etc/k1plus-watchdog-last-reboot 2>&1; sed -E "s/(psk|password|passphrase|key)[=:][^ ]+/\\1=<REDACTED>/Ig" /root/wifi-diag/watchdog.log 2>/dev/null' (Join-Path $roundDir 'watchdog-gate-ssh.log') 20
+	$watchdogGate = Invoke-SSH 'sha256sum /usr/sbin/k1plus-wifi-watchdog; grep -c "stage3 aborted" /usr/sbin/k1plus-wifi-watchdog; echo MODE; cat /etc/wifi-watchdog.mode' (Join-Path $roundDir 'watchdog-gate-ssh.log') 20
 	$gateText = $watchdogGate.Output
 	if ($watchdogGate.ExitCode -ne 0 -or $gateText -notmatch "(?im)^$expectedWatchdogHash\s+/usr/sbin/k1plus-wifi-watchdog\s*$") {
 		Add-Event 'WATCHDOG_HASH_GATE_FAIL' "expected=$expectedWatchdogHash; see watchdog-gate-ssh.log"
@@ -539,9 +528,11 @@ if (-not $ResumePostObservation -and -not $ResumePassiveObservation -and -not $R
 		throw 'First recover round stage3-aborted marker gate failed.'
 	}
 	Add-Event 'WATCHDOG_HASH_GATE_PASS' "sha256=$expectedWatchdogHash"
+	$gateDetails = Invoke-SSH 'echo UPTIME; uptime; cat /proc/uptime; echo IW_DEV; timeout 15 iw dev 2>&1; echo ROOT; ls -l /root /root/wifi-diag; echo STATE_FILES; ls -l /root/WATCHDOG-DISABLED.txt /etc/k1plus-watchdog-last-reboot 2>&1; echo WATCHDOG_LOG; sed -E "s/(psk|password|passphrase|key)[=:][^ ]+/\\1=[REDACTED]/Ig" /root/wifi-diag/watchdog.log 2>/dev/null' (Join-Path $roundDir 'watchdog-gate-details-ssh.log') 25
+	Add-Event 'WATCHDOG_GATE_DETAILS_CAPTURED' "ssh_exit=$($gateDetails.ExitCode); see watchdog-gate-details-ssh.log"
 
 	if ($sshReady) {
-		$collect = Invoke-SSH 'mkdir -p /tmp/p4-out; tar czf /tmp/p4-out/diag.tgz /root/wifi-diag 2>/dev/null; cp /root/wifi-diag/watchdog.log /tmp/p4-out/watchdog.log 2>/dev/null; { date -Iseconds; date +%s; cat /proc/uptime; echo CONFIG_TIMES; busybox ls -l --full-time /etc/config/wireless /etc/config/network /etc/config/system 2>&1; stat -c "%n %y" /etc/config/wireless /etc/config/network /etc/config/system 2>&1; echo WATCHDOG_GATE; sha256sum /usr/sbin/k1plus-wifi-watchdog; grep -n "stage3 aborted" /usr/sbin/k1plus-wifi-watchdog; echo STATE; uptime; iw phy; iw dev; ubus call network.wireless status; cat /root/wifi-diag/watchdog.log 2>/dev/null; logread; } > /tmp/p4-out/state.log' (Join-Path $roundDir 'collect-device.log') 30
+		$collect = Invoke-SSH 'mkdir -p /tmp/p4-out; tar czf /tmp/p4-out/diag.tgz /root/wifi-diag 2>/dev/null; cp /root/wifi-diag/watchdog.log /tmp/p4-out/watchdog.log 2>/dev/null; { date -Iseconds; date +%s; cat /proc/uptime; echo CONFIG_TIMES; busybox ls -l --full-time /etc/config/wireless /etc/config/network /etc/config/system 2>&1; stat -c "%n %y" /etc/config/wireless /etc/config/network /etc/config/system 2>&1; echo WATCHDOG_GATE; sha256sum /usr/sbin/k1plus-wifi-watchdog; grep -n "stage3 aborted" /usr/sbin/k1plus-wifi-watchdog; echo STATE; uptime; timeout 15 iw phy 2>&1; timeout 15 iw dev 2>&1; ubus call network.wireless status; sed -E "s/(psk|password|passphrase|key)[=:][^ ]+/\\1=[REDACTED]/Ig" /root/wifi-diag/watchdog.log 2>/dev/null; logread | sed -E "s/(psk|password|passphrase|key)[=:][^ ]+/\\1=[REDACTED]/Ig"; } > /tmp/p4-out/state.log' (Join-Path $roundDir 'collect-device.log') 45
 		if ($collect.ExitCode -eq 0) {
 			Invoke-SCP @('root@192.168.1.1:/tmp/p4-out/diag.tgz', (Join-Path $roundDir 'wifi-diag.tgz')) (Join-Path $roundDir 'diag-fetch.log')
 			Invoke-SCP @('root@192.168.1.1:/tmp/p4-out/state.log', (Join-Path $roundDir 'state.log')) (Join-Path $roundDir 'state-fetch.log')
@@ -569,7 +560,7 @@ if (-not $ResumePostObservation -and -not $ResumePassiveObservation -and -not $R
 	$watchdogLogText = Get-Content -LiteralPath (Join-Path $roundDir 'watchdog.log') -Raw -ErrorAction SilentlyContinue
 	$watchdogRows = @($watchdogLogText -split "`r?`n" | Where-Object { $_ -match 'START|HEALTH|THRESHOLD-REACHED|collect tag=|recovery stage [123]:|reboot cooldown|GAVE-UP|stage3 aborted' })
 	$healthRows = @($watchdogRows | Where-Object { $_ -match ' HEALTH ' })
-	$healthMismatchRows = @($healthRows | Where-Object { $_ -match 'ap_discovery_rc=0 ap_info_rc=0' -and $_ -match 'healthy_rc=1' })
+	$healthMismatchRows = @($healthRows | Where-Object { $_ -match 'ap_discovery_rc=0' -and $_ -match 'healthy_rc=1' })
 	$stage3Aborted = [bool]($watchdogRows | Where-Object { $_ -match 'stage3 aborted' })
 	$healthMismatchPath = Join-Path $roundDir 'health-ap-present-healthy-failed.log'
 	if ($healthMismatchRows.Count -gt 0) { [IO.File]::WriteAllLines($healthMismatchPath, [string[]]$healthMismatchRows, [Text.UTF8Encoding]::new($false)) }
