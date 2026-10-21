@@ -30,11 +30,17 @@ $timeline = [System.Collections.Generic.List[string]]::new()
 $script:recorderRestartAttempts = 0
 $script:sshWaitResolved = $false
 $script:sshAvailableDuringPassive = $false
+$sshPost300GraceSeconds = 180
 
 New-Item -ItemType Directory -Path $roundDir -Force | Out-Null
 if (-not (Test-Path -LiteralPath $verifiedKnownHosts)) {
 	$firstRoundKnownHosts = Join-Path $evidenceRoot 'P4\recover-r394088-01\known_hosts.postboot-verified'
-	if (Test-Path -LiteralPath $firstRoundKnownHosts) {
+	$verifiedHostCandidates = @(Get-ChildItem (Join-Path $evidenceRoot 'P4') -Filter 'known_hosts.verified' -File -Recurse -ErrorAction SilentlyContinue |
+		Where-Object { $_.FullName -ne $verifiedKnownHosts } |
+		Sort-Object LastWriteTime -Descending)
+	if ($verifiedHostCandidates.Count -gt 0) {
+		Copy-Item -LiteralPath $verifiedHostCandidates[0].FullName -Destination $verifiedKnownHosts
+	} elseif (Test-Path -LiteralPath $firstRoundKnownHosts) {
 		Copy-Item -LiteralPath $firstRoundKnownHosts -Destination $verifiedKnownHosts
 	} elseif (Test-Path -LiteralPath $knownHostsSource) {
 		Copy-Item -LiteralPath $knownHostsSource -Destination $verifiedKnownHosts
@@ -69,9 +75,9 @@ function Invoke-SCP([string[]]$Arguments, [string]$LogFile) {
 
 function Probe-SSHDuringPassive([double]$ElapsedSeconds) {
 	if ($script:sshWaitResolved -or $ElapsedSeconds -lt 300) { return }
-	if ($ElapsedSeconds -ge 480) {
+	if ($ElapsedSeconds -ge (300 + $sshPost300GraceSeconds)) {
 		$script:sshWaitResolved = $true
-		Add-Event 'SSH_WAIT_TIMEOUT' 'no authenticated SSH by T+480s; COM9 fallback is deferred until the passive window ends'
+		Add-Event 'SSH_WAIT_TIMEOUT' "no authenticated SSH within ${sshPost300GraceSeconds}s after T+300s; COM9 fallback is deferred until the passive window ends"
 		return
 	}
 	$probePath = Join-Path $roundDir 'ssh-passive-probe.log'
@@ -577,7 +583,14 @@ if (-not $ResumePostObservation -and -not $ResumePassiveObservation -and -not $R
 	$apPresent = $apMatch.Success -or $stateText.Contains('Interface phy0-ap0')
 	if ($apPresent -and -not $apMatch.Success) { $apUptime = 'not-in-serial-log' }
 	$outcome = if ($apPresent) { 'observed-present' } else { "observed-absent-at-${passiveLimitSeconds}s" }
-	$rebootRows = @([regex]::Matches($bootSegment, '\[\s*([0-9]+(?:\.[0-9]+)?)\].{0,160}reboot: Restarting system') | ForEach-Object { $_.Groups[1].Value })
+	$rebootPattern = '\[(?<wall>2026-[^\]]+)\] RX \[\s*(?<up>\d+(?:\.\d+)?)\] reboot: Restarting system'
+	$rebootRows = @(
+		foreach ($candidate in [regex]::Matches($serial, $rebootPattern)) {
+			if ([DateTimeOffset]::Parse($candidate.Groups['wall'].Value) -ge $bootWall) {
+				$candidate.Groups['up'].Value.Trim()
+			}
+		}
+	)
 	$summary = [ordered]@{
 		round = $roundName; mode = $Mode; imageSha256 = $actualHash; started = $scriptStart.ToString('o'); rebootT0 = $bootWall.ToString('o')
 		phy0Uptime = $phyUptime; phy0Ap0Uptime = $apUptime; watchdog = $wd; stage3Aborted = $stage3Aborted; rebootUptimes = ($rebootRows -join ','); sshAvailableT = $sshAvailableAt; outcome = $outcome
