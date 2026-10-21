@@ -171,6 +171,11 @@ function Wait-SerialPattern([string]$Pattern, [long]$Offset, [int]$TimeoutSecond
 	throw "Timed out waiting for COM9 pattern: $Pattern"
 }
 
+function Wait-LinuxBoot([long]$Offset, [int]$TimeoutSeconds = 240) {
+	$boot = Wait-SerialPattern 'Booting Linux on physical CPU' $Offset $TimeoutSeconds
+	Add-Event 'LINUX_BOOT_SEEN_BEFORE_SERIAL_INPUT' "elapsed=$([math]::Round($boot.Elapsed,1))s"
+}
+
 function Get-AfterRebootOffset([string]$Delta, [long]$BaseOffset) {
 	$marker = 'reboot: Restarting system'
 	$index = $Delta.LastIndexOf($marker, [StringComparison]::Ordinal)
@@ -346,6 +351,10 @@ if (-not $ResumePostObservation -and -not $ResumePassiveObservation -and -not $R
 			Add-Event 'FIRSTBOOT_ISSUED_OVER_SSH' "ssh_exit=$($firstboot.ExitCode)"
 		} else {
 			Add-Event 'SSH_UNAVAILABLE_FIRSTBOOT_FALLBACK' 'using COM9 only after SSH probe failed'
+			$serialBeforeFallback = Get-SerialText
+			$lastRebootMarker = $serialBeforeFallback.LastIndexOf('reboot: Restarting system', [StringComparison]::Ordinal)
+			if ($lastRebootMarker -lt 0) { throw 'Cannot anchor resumed serial fallback to this round reboot marker.' }
+			Wait-LinuxBoot ($lastRebootMarker + 'reboot: Restarting system'.Length) 240
 			Wake-SerialConsole
 			$clearMarker = "P4_CLEAR_$([guid]::NewGuid().ToString('N'))"
 			$clear = Send-Serial "firstboot -y; echo $clearMarker" $clearMarker 180
@@ -404,6 +413,7 @@ if (-not $ResumePostObservation -and -not $ResumePassiveObservation -and -not $R
 			Add-Event 'FIRSTBOOT_ISSUED_OVER_SSH' "ssh_exit=$($firstboot.ExitCode)"
 		} else {
 			Add-Event 'SSH_UNAVAILABLE_FIRSTBOOT_FALLBACK' 'using COM9 only after SSH probe failed'
+			Wait-LinuxBoot $boot.Offset 240
 			Wake-SerialConsole
 			Add-Event 'FIRST_BOOT_CONSOLE_READY' 'COM9 newline wake and shell prompt verified'
 			$clearMarker = "P4_CLEAR_$([guid]::NewGuid().ToString('N'))"
