@@ -192,6 +192,9 @@ sed \
 	-e 's#/root/WATCHDOG-DISABLED.txt#"$WD_DISABLED_MARKER"#g' \
 	-e 's#/etc/k1plus-watchdog-last-reboot#"$WD_REBOOT_STAMP"#g' \
 	-e 's#/sbin/kmodloader#"$WD_KMODLOADER"#g' \
+	-e 's#pidof hostapd#"$WD_TESTDIR/bin/pidof" hostapd#' \
+	-e 's#^[[:space:]]*sync$#"$WD_TESTDIR/bin/sync"#' \
+	-e 's#^[[:space:]]*reboot$#"$WD_TESTDIR/bin/reboot"#' \
 	-e '/event "collect tag=observe rc=\$?"/a\
 	[ "$WD_TEST_STOP_AFTER_OBSERVE" = 1 ] && exit 0' \
 	-e "/event 'wifi reload restored kernel AP, hostapd, and netifd UBus state'/a\\
