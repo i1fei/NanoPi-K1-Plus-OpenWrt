@@ -1,0 +1,26 @@
+START=2026-10-22T16:39:48.3419217+08:00 duration_s=7200 interval_s=300
+[2026-10-22T16:39:48.3803320+08:00] SAMPLE=0 ssh=PASS uptime_s=927.90 boot_id=b6831a18-0d14-46db-b277-750550baaa7c ap_present=True watchdog_log_lines=15 recorder_heartbeat_age_s=3.8 events=none
+[2026-10-22T16:44:49.9293750+08:00] SAMPLE=1 ssh=PASS uptime_s=1229.09 boot_id=b6831a18-0d14-46db-b277-750550baaa7c ap_present=True watchdog_log_lines=16 recorder_heartbeat_age_s=3.9 events=none
+[2026-10-22T16:49:51.1282271+08:00] SAMPLE=2 ssh=PASS uptime_s=1530.29 boot_id=b6831a18-0d14-46db-b277-750550baaa7c ap_present=True watchdog_log_lines=17 recorder_heartbeat_age_s=4 events=none
+[2026-10-22T16:54:52.3006974+08:00] SAMPLE=3 ssh=PASS uptime_s=1831.54 boot_id=b6831a18-0d14-46db-b277-750550baaa7c ap_present=True watchdog_log_lines=18 recorder_heartbeat_age_s=4.2 events=none
+[2026-10-22T16:59:53.5162151+08:00] SAMPLE=4 ssh=PASS uptime_s=2133.87 boot_id=b6831a18-0d14-46db-b277-750550baaa7c ap_present=True watchdog_log_lines=19 recorder_heartbeat_age_s=4.5 events=none
+[2026-10-22T17:04:55.8483732+08:00] SAMPLE=5 ssh=PASS uptime_s=2435.12 boot_id=b6831a18-0d14-46db-b277-750550baaa7c ap_present=True watchdog_log_lines=20 recorder_heartbeat_age_s=5.9 events=none
+[2026-10-22T17:09:57.1305341+08:00] SAMPLE=6 ssh=PASS uptime_s=2736.44 boot_id=b6831a18-0d14-46db-b277-750550baaa7c ap_present=True watchdog_log_lines=21 recorder_heartbeat_age_s=6.1 events=none
+[2026-10-22T17:14:58.4036321+08:00] SAMPLE=7 ssh=PASS uptime_s=3037.65 boot_id=b6831a18-0d14-46db-b277-750550baaa7c ap_present=True watchdog_log_lines=22 recorder_heartbeat_age_s=6.2 events=none
+[2026-10-22T17:19:59.6169853+08:00] SAMPLE=8 ssh=PASS uptime_s=3338.97 boot_id=b6831a18-0d14-46db-b277-750550baaa7c ap_present=True watchdog_log_lines=23 recorder_heartbeat_age_s=6.4 events=none
+[2026-10-22T17:25:00.8936737+08:00] SAMPLE=9 ssh=PASS uptime_s=3640.21 boot_id=b6831a18-0d14-46db-b277-750550baaa7c ap_present=True watchdog_log_lines=24 recorder_heartbeat_age_s=7 events=none
+[2026-10-22T17:30:02.1458047+08:00] SAMPLE=10 ssh=PASS uptime_s=3941.46 boot_id=b6831a18-0d14-46db-b277-750550baaa7c ap_present=True watchdog_log_lines=25 recorder_heartbeat_age_s=7.3 events=none
+[2026-10-22T17:35:03.3870771+08:00] SAMPLE=11 ssh=PASS uptime_s=4242.62 boot_id=b6831a18-0d14-46db-b277-750550baaa7c ap_present=True watchdog_log_lines=26 recorder_heartbeat_age_s=7.6 events=none
+[2026-10-22T17:40:04.5426410+08:00] SAMPLE=12 ssh=PASS uptime_s=4543.94 boot_id=b6831a18-0d14-46db-b277-750550baaa7c ap_present=True watchdog_log_lines=27 recorder_heartbeat_age_s=7.9 events=none
+[2026-10-22T17:45:05.8502087+08:00] SAMPLE=13 ssh=PASS uptime_s=4845.11 boot_id=b6831a18-0d14-46db-b277-750550baaa7c ap_present=True watchdog_log_lines=28 recorder_heartbeat_age_s=8.1 events=none
+[2026-10-22T17:50:07.0549808+08:00] SAMPLE=14 ssh=PASS uptime_s=5146.48 boot_id=b6831a18-0d14-46db-b277-750550baaa7c ap_present=True watchdog_log_lines=29 recorder_heartbeat_age_s=8.3 events=none
+[2026-10-22T17:55:08.3924176+08:00] SAMPLE=15 ssh=PASS uptime_s=5447.69 boot_id=b6831a18-0d14-46db-b277-750550baaa7c ap_present=True watchdog_log_lines=30 recorder_heartbeat_age_s=8.5 events=none
+[2026-10-22T18:00:09.5753027+08:00] SAMPLE=16 ssh=PASS uptime_s=5748.97 boot_id=b6831a18-0d14-46db-b277-750550baaa7c ap_present=True watchdog_log_lines=31 recorder_heartbeat_age_s=8.6 events=none
+[2026-10-22T18:05:10.8466603+08:00] SAMPLE=17 ssh=PASS uptime_s=6050.22 boot_id=b6831a18-0d14-46db-b277-750550baaa7c ap_present=True watchdog_log_lines=32 recorder_heartbeat_age_s=8.8 events=none
+[2026-10-22T18:10:12.1216464+08:00] SAMPLE=18 ssh=PASS uptime_s=6351.60 boot_id=b6831a18-0d14-46db-b277-750550baaa7c ap_present=True watchdog_log_lines=33 recorder_heartbeat_age_s=9.1 events=none
+[2026-10-22T18:15:13.4354688+08:00] SAMPLE=19 ssh=PASS uptime_s=6652.79 boot_id=b6831a18-0d14-46db-b277-750550baaa7c ap_present=True watchdog_log_lines=34 recorder_heartbeat_age_s=9.5 events=none
+[2026-10-22T18:20:14.6511023+08:00] SAMPLE=20 ssh=PASS uptime_s=6953.95 boot_id=b6831a18-0d14-46db-b277-750550baaa7c ap_present=True watchdog_log_lines=35 recorder_heartbeat_age_s=9.8 events=none
+[2026-10-22T18:25:15.7869509+08:00] SAMPLE=21 ssh=PASS uptime_s=7255.13 boot_id=b6831a18-0d14-46db-b277-750550baaa7c ap_present=True watchdog_log_lines=36 recorder_heartbeat_age_s=10 events=none
+[2026-10-22T18:30:16.9712855+08:00] SAMPLE=22 ssh=PASS uptime_s=7556.35 boot_id=b6831a18-0d14-46db-b277-750550baaa7c ap_present=True watchdog_log_lines=37 recorder_heartbeat_age_s=0.2 events=none
+[2026-10-22T18:35:18.1932343+08:00] SAMPLE=23 ssh=PASS uptime_s=7857.54 boot_id=b6831a18-0d14-46db-b277-750550baaa7c ap_present=True watchdog_log_lines=38 recorder_heartbeat_age_s=0.4 events=none
+END=2026-10-22T18:39:48.4036677+08:00 elapsed_s=7200.1 samples=24

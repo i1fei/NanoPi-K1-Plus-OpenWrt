@@ -502,7 +502,11 @@ if (-not $ResumePostObservation -and -not $ResumePassiveObservation -and -not $R
 	$hostMarker = "P4_HOSTKEY_$([guid]::NewGuid().ToString('N'))"
 	Wake-SerialConsole
 	$hostRead = Send-Serial "dropbearkey -y -f /etc/dropbear/dropbear_ed25519_host_key; echo $hostMarker" $hostMarker 30
-	if ($hostRead.Text -notmatch '(ssh-ed25519\s+[A-Za-z0-9+/]+={0,2}\s+[^\r\n\\]+)') { throw 'ED25519 public host key not found in COM9 output.' }
+	[IO.File]::WriteAllText((Join-Path $roundDir 'hostkey-com9-transcript.log'), $hostRead.Text, [Text.UTF8Encoding]::new($false))
+	$rxPayloads = [regex]::Matches($hostRead.Text, '(?m)^\[[^\]]+\] RX (.*)$') | ForEach-Object { $_.Groups[1].Value }
+	$serialOutput = (($rxPayloads -join '') -replace '\\r\\n', ' ')
+	$serialOutput = [regex]::Replace($serialOutput, '\[\s*\d+\.\d+\]\s+RTW:.*?(?=\\r\\n|$)', '')
+	if ($serialOutput -notmatch '(ssh-ed25519\s+[A-Za-z0-9+/]+={0,2}\s+[^\s\\]+)') { throw 'ED25519 public host key not found in COM9 output after removing interleaved RTW console records; see hostkey-com9-transcript.log.' }
 	$serialPub = $Matches[1].Trim()
 	$serialPubPath = Join-Path $roundDir 'device-hostkey-from-com9.pub'
 	[IO.File]::WriteAllText($serialPubPath, $serialPub + "`n", [Text.UTF8Encoding]::new($false))
