@@ -664,7 +664,12 @@ if (-not $ResumePostObservation -and -not $ResumePassiveObservation -and -not $R
 	}
 	$pattern = "(?m)^\| $globalRoundNumber \| $roundLabel \|.*$"
 	if ([regex]::IsMatch($trackerText, $pattern)) { $trackerText = [regex]::Replace($trackerText, $pattern, [System.Text.RegularExpressions.MatchEvaluator]{ param($m) $line }, 1) }
-	else { $trackerText += [Environment]::NewLine + $line + [Environment]::NewLine }
+	else {
+		$stabilityHeading = '## Two-hour stability observation'
+		$headingIndex = $trackerText.IndexOf($stabilityHeading, [StringComparison]::Ordinal)
+		if ($headingIndex -ge 0) { $trackerText = $trackerText.Insert($headingIndex, $line + [Environment]::NewLine + [Environment]::NewLine) }
+		else { $trackerText += [Environment]::NewLine + $line + [Environment]::NewLine }
+	}
 	[IO.File]::WriteAllText($tracker, $trackerText, [Text.UTF8Encoding]::new($false))
 	Add-Event 'ROUND_COMPLETE' "outcome=$outcome phy0=$phyUptime phy0-ap0=$apUptime ssh_T=$sshAvailableAt"
 	Write-Host "P4_ROW=$line"
