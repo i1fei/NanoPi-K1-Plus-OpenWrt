@@ -653,14 +653,14 @@ if (-not $ResumePostObservation -and -not $ResumePassiveObservation -and -not $R
 	$summary | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $roundDir 'round.json') -Encoding utf8
 	$apResult = if ($apPresent) { "yes / $apUptime" } else { 'no / —' }
 	$globalRoundNumber = 16 + $Round
-	$globalRound = 'R{0:d2}' -f $globalRoundNumber
-	$line = "| $globalRound | $roundName | $actualHash | $phyUptime | $apResult | $($healthRows.Count) / $healthSummary | $wd | $stage3Aborted | $($rebootRows -join ',') | $sshAvailableAt | $($healthMismatchRows.Count) | ``evidence/P4/$roundName/`` |"
+	$roundLabel = 'R{0:d2}' -f $Round
+	$line = "| $globalRoundNumber | $roundLabel | $actualHash | $phyUptime | $apResult | $($healthRows.Count) / $healthSummary | $wd | $stage3Aborted | $($rebootRows -join ',') | $sshAvailableAt | $($healthMismatchRows.Count) | ``evidence/P4/$roundName/`` |"
 	$trackerText = [IO.File]::ReadAllText($tracker)
 	$sectionTitle = '## Watchdog v2 Recover Run 39710625084'
 	if (-not $trackerText.Contains($sectionTitle)) {
 		$trackerText += [Environment]::NewLine + $sectionTitle + [Environment]::NewLine + [Environment]::NewLine + '| Total | Round | Image SHA-256 | phy0 uptime | phy0-ap0 first | HEALTH rows / healthy_rc changes | Stages / health recovered | stage3 aborted | reboot uptime(s) | SSH T+ | AP-present healthy failures | Evidence |' + [Environment]::NewLine + '|---:|---|---|---:|---|---|---|---|---|---:|---:|---|' + [Environment]::NewLine
 	}
-	$pattern = "(?m)^\| $globalRound \| $Mode \|.*$"
+	$pattern = "(?m)^\| $globalRoundNumber \| $roundLabel \|.*$"
 	if ([regex]::IsMatch($trackerText, $pattern)) { $trackerText = [regex]::Replace($trackerText, $pattern, [System.Text.RegularExpressions.MatchEvaluator]{ param($m) $line }, 1) }
 	else { $trackerText += [Environment]::NewLine + $line + [Environment]::NewLine }
 	[IO.File]::WriteAllText($tracker, $trackerText, [Text.UTF8Encoding]::new($false))
