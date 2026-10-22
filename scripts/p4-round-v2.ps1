@@ -150,7 +150,7 @@ function Send-Serial([string]$Command, [string]$Marker, [int]$TimeoutSeconds = 6
 		if ($tail.Length -gt $before) {
 			$delta = $tail.Substring($before)
 			$markerSeen = $delta -match "\\r\\n$([regex]::Escape($Marker))\\r\\n|RX $([regex]::Escape($Marker))(?:\\r\\n|$)"
-			$shellCommandFinished = $Command -notmatch '(^|[;&\s])(reboot|sysupgrade)([;&\s]|$)' -and $delta -match 'root@[^\s]+:~#'
+			$shellCommandFinished = $Command -notmatch '(^|[;&\s])(reboot|sysupgrade)([;&\s]|$)' -and $delta -match 'root@[^\s]+:[^#\r\n]*#'
 			if ($markerSeen -or $shellCommandFinished) {
 				$watch.Stop()
 				return [PSCustomObject]@{ Offset = $before; Elapsed = $watch.Elapsed.TotalSeconds; Text = $delta }
@@ -199,7 +199,7 @@ function Wake-SerialConsole {
 		$text = Get-SerialText
 		if ($text.Length -gt $before) {
 			$delta = $text.Substring($before)
-			if ($delta -match 'root@[^\s]+:~#') {
+			if ($delta -match 'root@[^\s]+:[^#\r\n]*#') {
 				$watch.Stop()
 				Add-Event 'SERIAL_CONSOLE_READY' "wake_elapsed=$([math]::Round($watch.Elapsed.TotalSeconds,2))s"
 				return
@@ -288,7 +288,7 @@ if ($Round -gt 1) {
 		throw "Round order refused: previous round $($Round - 1) has no ROUND_COMPLETE record."
 	}
 }
-if ((Test-Path -LiteralPath (Join-Path $roundDir 'round.log')) -and (Select-String -LiteralPath (Join-Path $roundDir 'round.log') -Pattern 'SYSUPGRADE_START' -Quiet)) {
+if (-not ($ResumeAfterSysupgrade -or $ResumePostObservation -or $ResumePassiveObservation) -and (Test-Path -LiteralPath (Join-Path $roundDir 'round.log')) -and (Select-String -LiteralPath (Join-Path $roundDir 'round.log') -Pattern 'SYSUPGRADE_START' -Quiet)) {
 	throw 'This round already began flashing; refusing an implicit second flash. Use an explicit resume path after reviewing its evidence.'
 }
 if (-not $ResumeAfterSysupgrade -and -not $ResumePostObservation -and -not $ResumePassiveObservation) { Update-VerifiedKnownHost }
