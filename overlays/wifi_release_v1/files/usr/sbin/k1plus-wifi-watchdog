@@ -54,12 +54,12 @@ event "START interval=$interval threshold=$threshold radio=dynamic iface=kernel-
 
 kernel_ap_healthy() {
 	ap_interface=$(iw dev 2>/dev/null | awk '
-		/^Interface / { name=$2 }
-		/^[[:space:]]*type AP$/ { if (name != "") { print name; exit } }')
+		$1 == "Interface" { name=$2 }
+		$1 == "type" && $2 == "AP" { if (name != "") { print name; exit } }')
 	[ -n "$ap_interface" ]
 	ap_discovery_rc=$?
 	if [ "$ap_discovery_rc" -eq 0 ]; then
-		iw dev "$ap_interface" info 2>/dev/null | grep -q '^[[:space:]]*type AP$'
+		iw dev "$ap_interface" info 2>/dev/null | awk '$1 == "type" && $2 == "AP" { found=1 } END { exit !found }'
 		ap_info_rc=$?
 	else
 		ap_info_rc=1

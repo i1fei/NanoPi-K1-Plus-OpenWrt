@@ -65,6 +65,19 @@ jobs:
 
       - name: Check Wi-Fi release marker validation
         run: ./scripts/test-wifi-release-marker.sh
+      - name: Test Wi-Fi watchdog with BusyBox applets
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y busybox-static
+          busybox 2>&1 | head -n 1
+          mkdir -p .work/busybox-bin
+          for applet in sh awk grep; do
+            ln -sf "$(command -v busybox)" ".work/busybox-bin/$applet"
+          done
+          PATH="$GITHUB_WORKSPACE/.work/busybox-bin:$PATH" busybox sh \
+            scripts/test-wifi-watchdog-sim.sh \
+            overlays/wifi_release_v1/files/usr/sbin/k1plus-wifi-watchdog \
+            overlays/wifi_release_v1/files/usr/libexec/wifi-diag-collect.sh
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3

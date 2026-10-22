@@ -20,6 +20,34 @@ ck() {
 }
 
 mkdir -p "$T/bin" "$T/cfg"
+printf '%s\n' \
+	'phy#0' \
+	"$(printf '\tInterface phy0-ap0')" \
+	"$(printf '\t\tifindex 6')" \
+	"$(printf '\t\twdev 0x3')" \
+	"$(printf '\t\taddr 7c:c7:09:a5:47:ed')" \
+	"$(printf '\t\tssid NanoPi-K1-Plus')" \
+	"$(printf '\t\ttype AP')" \
+	"$(printf '\t\ttxpower 16.00 dBm')" > "$T/iw-dev-ap.txt"
+printf '%s\n' \
+	"$(printf '\tInterface phy0-ap0')" \
+	"$(printf '\t\tifindex 6')" \
+	"$(printf '\t\twdev 0x3')" \
+	"$(printf '\t\ttype AP')" > "$T/iw-info-ap.txt"
+printf '%s\n' \
+	'phy#0' \
+	"$(printf '\tInterface wlan0')" \
+	"$(printf '\t\tifindex 3')" \
+	"$(printf '\t\ttype managed')" \
+	'phy#1' \
+	"$(printf '\tInterface phy1-ap0')" \
+	"$(printf '\t\tifindex 8')" \
+	"$(printf '\t\ttype AP')" > "$T/iw-dev-multi.txt"
+printf '%s\n' \
+	"$(printf '\tInterface phy0-ap0')" \
+	"$(printf '\t\tifindex 6')" \
+	"$(printf '\t\ttype managed')" > "$T/iw-info-managed.txt"
+: > "$T/iw-dev-empty.txt"
 cat > "$T/lib-functions.sh" <<'EOF'
 config_load() { :; }
 config_get() {
@@ -45,22 +73,35 @@ EOF
 cat > "$T/bin/iw" <<'EOF'
 #!/bin/sh
 if [ "$1" = dev ] && [ "$#" -eq 1 ]; then
-	if [ -d "$WD_SYSNET/phy0-ap0" ]; then
-		printf '%s\n' 'phy#0' 'Interface phy0-ap0' '        type AP'
+	if [ -n "$WD_IW_DEV_FIXTURE" ]; then
+		cat "$WD_IW_DEV_FIXTURE"
+	elif [ -d "$WD_SYSNET/phy0-ap0" ]; then
+		cat "$WD_TESTDIR/iw-dev-ap.txt"
 	fi
 	exit 0
 fi
-if [ "$1" = dev ] && [ "$2" = phy0-ap0 ] && [ "$3" = info ]; then
-	[ -d "$WD_SYSNET/phy0-ap0" ] && printf '%s\n' '        type AP'
-	exit $?
+if [ "$1" = dev ] && [ "$3" = info ]; then
+	printf '%s\n' "$*" >> "$WD_TESTDIR/iw-calls"
+	if [ -n "$WD_IW_INFO_FIXTURE" ]; then
+		cat "$WD_IW_INFO_FIXTURE"
+	elif [ -d "$WD_SYSNET/$2" ]; then
+		cat "$WD_TESTDIR/iw-info-ap.txt"
+	fi
+	exit 0
 fi
 printf '%s\n' 'Wiphy phy0'
 EOF
 
 cat > "$T/bin/ubus" <<'EOF'
 #!/bin/sh
-if [ -d "$WD_SYSNET/phy0-ap0" ]; then
-	printf '%s\n' '{"radio0":{"up":true,"interfaces":[{"ifname":"phy0-ap0"}]}}'
+ap_ifname=
+for ap_path in "$WD_SYSNET"/*-ap*; do
+	[ -d "$ap_path" ] || continue
+	ap_ifname=${ap_path##*/}
+	break
+done
+if [ -n "$ap_ifname" ]; then
+	printf '{"radio0":{"up":true,"interfaces":[{"ifname":"%s"}]}}\n' "$ap_ifname"
 else
 	printf '%s\n' '{"radio0":{"up":true,"interfaces":[]}}'
 fi
@@ -172,7 +213,26 @@ run_watchdog() {
 	WD_REBOOT_STAMP="$1/reboot-stamp" WD_LIB_FUNCTIONS="$T/lib-functions.sh" \
 	WD_CFGDIR="$T/cfg" WD_COLLECT="$T/collector" \
 	WD_KMODLOADER="$T/bin/kmodloader" \
+	WD_IW_DEV_FIXTURE="${6:-}" WD_IW_INFO_FIXTURE="${7:-}" \
 	PATH="$T/bin:$PATH" sh "$script"
+}
+
+run_predicate_case() {
+	name=$1
+	dev_fixture=$2
+	info_fixture=$3
+	initial_ap=$4
+	setup "$name" observe
+	[ "$initial_ap" = 0 ] || mkdir -p "$S/sysnet/phy0-ap0"
+	WD_TEST_INTERVAL=1 WD_TEST_THRESHOLD=3 WD_TEST_COMMAND_TIMEOUT=5 \
+	WD_TEST_RELOAD_GRACE=1 WD_TESTDIR="$T" WD_TEST_CREATE_ON_SLEEP=0 \
+	WD_TEST_EXTERNAL_RECOVERY=0 WD_TEST_STOP_AFTER_OBSERVE=1 WD_TEST_STOP_AFTER_RECOVERY=1 \
+	WD_SYSNET="$S/sysnet" WIFI_DIAG_BASE="$S/diag" WD_MODEFILE="$S/mode" \
+	WD_PROVISION_MARKER="$S/provisioned" WD_DISABLED_MARKER="$S/disabled" \
+	WD_REBOOT_STAMP="$S/reboot-stamp" WD_LIB_FUNCTIONS="$T/lib-functions.sh" \
+	WD_CFGDIR="$T/cfg" WD_COLLECT="$T/collector" WD_KMODLOADER="$T/bin/kmodloader" \
+	WD_IW_DEV_FIXTURE="$dev_fixture" WD_IW_INFO_FIXTURE="$info_fixture" \
+	PATH="$T/bin:$PATH" sh "$T/watchdog"
 }
 
 setup() {
@@ -183,6 +243,7 @@ setup() {
 	: > "$S/provisioned"
 	: > "$T/sleep-count"
 	: > "$T/wifi-calls"
+	: > "$T/iw-calls"
 	: > "$T/syslog"
 	: > "$T/kmodloader-calls"
 	: > "$T/recovery-actions"
@@ -248,6 +309,26 @@ WD_TEST_INTERVAL=1 WD_TEST_THRESHOLD=3 WD_TEST_COMMAND_TIMEOUT=5 \
 ck "E stage 3 abort logged" "grep -q 'stage3 aborted: healthy on recheck' '$S/diag/watchdog.log'"
 ck "E stage 3 did not call sync or reboot" "! grep -Eq '^(sync|reboot)$' '$T/recovery-actions'"
 ck "E aborted stage 3 did not consume reboot cooldown" "[ ! -e '$S/reboot-stamp' ]"
+
+echo "== F: tab-indented iw parser fixtures =="
+run_predicate_case F1 "$T/iw-dev-ap.txt" "$T/iw-info-ap.txt" 1 || true
+ck "F1 AP present is healthy" "grep -q 'HEALTH .*ap_discovery_rc=0 ap_info_rc=0 .*healthy_rc=0' '$T/F1/diag/watchdog.log'"
+run_predicate_case F2 "$T/iw-dev-empty.txt" "$T/iw-info-ap.txt" 0 || true
+ck "F2 missing interface returns unhealthy" "grep -q 'HEALTH .*ap_discovery_rc=1 ap_info_rc=1 .*healthy_rc=1' '$T/F2/diag/watchdog.log'"
+run_predicate_case F3 "$T/iw-dev-ap.txt" "$T/iw-info-managed.txt" 1 || true
+ck "F3 non-AP info returns unhealthy" "grep -q 'HEALTH .*ap_discovery_rc=0 ap_info_rc=1 .*healthy_rc=1' '$T/F3/diag/watchdog.log'"
+setup F4 observe
+mkdir -p "$S/sysnet/phy1-ap0"
+WD_TEST_INTERVAL=1 WD_TEST_THRESHOLD=3 WD_TEST_COMMAND_TIMEOUT=5 \
+	WD_TEST_RELOAD_GRACE=1 WD_TESTDIR="$T" WD_TEST_CREATE_ON_SLEEP=0 \
+	WD_TEST_EXTERNAL_RECOVERY=0 WD_TEST_STOP_AFTER_OBSERVE=1 WD_TEST_STOP_AFTER_RECOVERY=1 \
+	WD_SYSNET="$S/sysnet" WIFI_DIAG_BASE="$S/diag" WD_MODEFILE="$S/mode" \
+	WD_PROVISION_MARKER="$S/provisioned" WD_DISABLED_MARKER="$S/disabled" \
+	WD_REBOOT_STAMP="$S/reboot-stamp" WD_LIB_FUNCTIONS="$T/lib-functions.sh" \
+	WD_CFGDIR="$T/cfg" WD_COLLECT="$T/collector" WD_KMODLOADER="$T/bin/kmodloader" \
+	WD_IW_DEV_FIXTURE="$T/iw-dev-multi.txt" WD_IW_INFO_FIXTURE="$T/iw-info-ap.txt" \
+	PATH="$T/bin:$PATH" sh "$T/watchdog" || true
+ck "F4 selects AP across multiple phys/interfaces" "grep -q 'HEALTH .*ap_discovery_rc=0 ap_info_rc=0 .*healthy_rc=0' '$T/F4/diag/watchdog.log' && grep -q 'dev phy1-ap0 info' '$T/iw-calls'"
 
 if [ "$fail" -eq 0 ]; then
 	echo ALL PASS
