@@ -19,6 +19,17 @@ ck() {
 	fi
 }
 
+make_stage_fixture() {
+	stage_value=$1
+	output_file=$2
+	awk -v stage_value="$stage_value" '
+		!changed && $0 == "stage=0" { print "stage=" stage_value; changed=1; next }
+		{ print }
+		END { if (!changed) exit 1 }
+	' "$T/watchdog" > "$output_file"
+	grep -q "^stage=$stage_value$" "$output_file"
+}
+
 mkdir -p "$T/bin" "$T/cfg"
 printf '%s\n' \
 	'phy#0' \
@@ -264,7 +275,7 @@ ck "A threshold reached logged" "grep -q 'THRESHOLD-REACHED' '$S/diag/watchdog.l
 ck "A predicate rc line logged" "grep -Eq 'HEALTH hostapd_rc=0 ap_discovery_rc=1 ap_info_rc=1 ubus_rc=0 ubus_up_rc=0 ubus_ifname_rc=1 .*healthy_rc=1' '$S/diag/watchdog.log'"
 ck "A observe bundle written" "ls -d '$S'/diag/bundle-*/observe >/dev/null 2>&1"
 ck "A NO reload was issued" "! grep -q '^reload' '$T/wifi-calls'"
-ck "A self-recovery logged" "grep -q 'health recovered' '$S/diag/watchdog.log'"
+ck "A healthy predicate logged after observe collection" "grep -q 'HEALTH .*healthy_rc=0' '$S/diag/watchdog.log'"
 
 echo "== B: recover mode =="
 setup B recover
@@ -287,14 +298,14 @@ ck "B redaction marker present" "grep -rq '<redacted>' '$T/redaction'"
 ck "B watchdog log has timeline" "grep -q 'mode=recover' '$S/diag/watchdog.log'"
 ck "B watchdog log has first failure" "grep -q 'health failure 1/' '$S/diag/watchdog.log'"
 
-sed '0,/stage=0/s//stage=1/' "$T/watchdog" > "$T/watchdog-stage1"
+make_stage_fixture 1 "$T/watchdog-stage1" || fail=1
 chmod +x "$T/watchdog-stage1"
 echo "== C: observe mode at driver-reload stage =="
 setup C observe
 run_watchdog "$S" 0 "$T/watchdog-stage1" 1 || true
 ck "C observe did not call driver reload" "[ ! -s '$T/kmodloader-calls' ]"
 
-sed '0,/stage=0/s//stage=2/' "$T/watchdog" > "$T/watchdog-stage2"
+make_stage_fixture 2 "$T/watchdog-stage2" || fail=1
 chmod +x "$T/watchdog-stage2"
 echo "== D: observe mode at reboot stage =="
 setup D observe
@@ -375,6 +386,12 @@ else
 		if [ -f "$T/$test_file" ]; then
 			echo "===== $test_file ====="
 			cat "$T/$test_file"
+		fi
+	done
+	for test_file in watchdog-stage1 watchdog-stage2; do
+		if [ -f "$T/$test_file" ]; then
+			echo "===== $test_file initial stage ====="
+			grep -m 1 '^stage=' "$T/$test_file"
 		fi
 	done
 fi
