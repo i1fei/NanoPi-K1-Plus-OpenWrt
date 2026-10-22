@@ -9,6 +9,8 @@ last_recovery=0
 recovery_count=0
 health_checks=0
 last_health_signature=
+last_reboot_cooldown_log=0
+reboot_cooldown_active=0
 
 diag_base=/root/wifi-diag
 diag_collect=/usr/libexec/wifi-diag-collect.sh
@@ -31,11 +33,6 @@ event() {
 
 [ -e /etc/wifi-release-done ] || {
 	event 'provisioning incomplete; WiFi recovery is disabled'
-	exit 0
-}
-
-[ -e /root/WATCHDOG-DISABLED.txt ] && {
-	event 'automatic recovery disabled by watchdog limit'
 	exit 0
 }
 
@@ -143,12 +140,16 @@ reboot_after_timeout() {
 
 allow_reboot() {
 	stamp_file=/etc/k1plus-watchdog-last-reboot
+	reboot_cooldown_active=0
 	now=$(date +%s)
 	last=$(cat "$stamp_file" 2>/dev/null || echo 0)
 	case "$last" in ''|*[!0-9]*) last=0;; esac
 	if [ "$last" -gt 0 ] && [ "$now" -lt $((last + reboot_cooldown)) ]; then
-		event "reboot cooldown active; refusing watchdog reboot for $((last + reboot_cooldown - now))s"
-		printf '%s\n' 'Automatic watchdog reboot is rate-limited to once per hour.' > /root/WATCHDOG-DISABLED.txt
+		reboot_cooldown_active=1
+		if [ "$last_reboot_cooldown_log" -eq 0 ] || [ "$now" -ge $((last_reboot_cooldown_log + 300)) ]; then
+			event "reboot suppressed by cooldown ($((last + reboot_cooldown - now))s remaining)"
+			last_reboot_cooldown_log=$now
+		fi
 		return 1
 	fi
 	printf '%s\n' "$now" > "$stamp_file" || {
@@ -249,7 +250,15 @@ while :; do
 				event 'stage3 aborted: healthy on recheck'
 				continue
 			fi
-			allow_reboot || exit 0
+			if ! allow_reboot; then
+				if [ "$reboot_cooldown_active" -eq 1 ]; then
+					stage=0
+					recovery_count=0
+					last_recovery=0
+					continue
+				fi
+				exit 0
+			fi
 			event 'recovery stage 3: reboot'
 			sync
 			reboot

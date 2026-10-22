@@ -203,10 +203,11 @@ chmod +x "$T/watchdog"
 run_watchdog() {
 	script="$3"
 	stop_observe="$4"
-	WD_TEST_INTERVAL=1 WD_TEST_THRESHOLD=3 WD_TEST_COMMAND_TIMEOUT=5 \
+	WD_TEST_INTERVAL=1 WD_TEST_THRESHOLD="${8:-3}" WD_TEST_COMMAND_TIMEOUT=5 \
 	WD_TEST_RELOAD_GRACE=1 WD_TESTDIR="$T" \
 	WD_TEST_CREATE_ON_SLEEP="${2:-0}" \
 	WD_TEST_EXTERNAL_RECOVERY="${5:-0}" \
+	WD_TEST_MAX_RECOVERIES="${9:-3}" \
 	WD_TEST_STOP_AFTER_OBSERVE="$stop_observe" WD_TEST_STOP_AFTER_RECOVERY=1 \
 	WD_SYSNET="$1/sysnet" WIFI_DIAG_BASE="$1/diag" WD_MODEFILE="$1/mode" \
 	WD_PROVISION_MARKER="$1/provisioned" WD_DISABLED_MARKER="$1/disabled" \
@@ -329,6 +330,29 @@ WD_TEST_INTERVAL=1 WD_TEST_THRESHOLD=3 WD_TEST_COMMAND_TIMEOUT=5 \
 	WD_IW_DEV_FIXTURE="$T/iw-dev-multi.txt" WD_IW_INFO_FIXTURE="$T/iw-info-ap.txt" \
 	PATH="$T/bin:$PATH" sh "$T/watchdog" || true
 ck "F4 selects AP across multiple phys/interfaces" "grep -q 'HEALTH .*ap_discovery_rc=0 ap_info_rc=0 .*healthy_rc=0' '$T/F4/diag/watchdog.log' && grep -q 'dev phy1-ap0 info' '$T/iw-calls'"
+
+echo "== G: cooldown suppression keeps recovery active =="
+sed '0,/stage=0/s//stage=2/' "$T/watchdog" > "$T/watchdog-stage2"
+chmod +x "$T/watchdog-stage2"
+setup G1 recover
+date +%s > "$S/reboot-stamp"
+run_watchdog "$S" 0 "$T/watchdog-stage2" 0 0 "$T/iw-dev-empty.txt" "$T/iw-info-ap.txt" 1 3 || true
+ck "G1 cooldown suppression is logged" "grep -q 'reboot suppressed by cooldown' '$S/diag/watchdog.log'"
+ck "G1 watchdog continues to stage 1 reload" "grep -q 'recovery stage 1: wifi reload' '$S/diag/watchdog.log'"
+ck "G1 cooldown refusal does not reboot" "! grep -Eq '^(sync|reboot)$' '$T/recovery-actions'"
+ck "G1 cooldown refusal does not create permanent disable marker" "[ ! -e '$S/disabled' ]"
+ck "G1 cooldown log is rate limited" "[ \$(grep -c 'reboot suppressed by cooldown' '$S/diag/watchdog.log') -eq 1 ]"
+
+setup G2 recover
+: > "$S/disabled"
+run_watchdog "$S" 0 "$T/watchdog" 0 0 "$T/iw-dev-empty.txt" "$T/iw-info-ap.txt" 1 3 || true
+ck "G2 existing disable marker does not stop startup" "grep -q 'recovery stage 1: wifi reload' '$S/diag/watchdog.log'"
+
+setup G3 recover
+now=$(date +%s)
+printf '%s\n' "$((now - 3601))" > "$S/reboot-stamp"
+run_watchdog "$S" 0 "$T/watchdog-stage2" 0 0 "$T/iw-dev-empty.txt" "$T/iw-info-ap.txt" 1 3 || true
+ck "G3 reboot is allowed after cooldown expires" "grep -q 'recovery stage 3: reboot' '$S/diag/watchdog.log' && grep -Eq '^(sync|reboot)$' '$T/recovery-actions'"
 
 if [ "$fail" -eq 0 ]; then
 	echo ALL PASS
