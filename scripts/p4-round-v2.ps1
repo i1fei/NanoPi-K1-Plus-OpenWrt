@@ -193,8 +193,9 @@ function Wake-SerialConsole {
 	$file = Join-Path $commandDir (('{0:D8}-{1}.cmd' -f [DateTimeOffset]::Now.ToUnixTimeMilliseconds(), [guid]::NewGuid().ToString('N')))
 	[IO.File]::WriteAllText($file, [Environment]::NewLine, [Text.UTF8Encoding]::new($false))
 	$watch = [Diagnostics.Stopwatch]::StartNew()
-	$secondWakeSent = $false
-	while ($watch.Elapsed.TotalSeconds -lt 60) {
+	$wakeCount = 1
+	$nextWakeAt = 10
+	while ($watch.Elapsed.TotalSeconds -lt 240) {
 		Assert-SerialRecorder
 		$text = Get-SerialText
 		if ($text.Length -gt $before) {
@@ -204,16 +205,17 @@ function Wake-SerialConsole {
 				Add-Event 'SERIAL_CONSOLE_READY' "wake_elapsed=$([math]::Round($watch.Elapsed.TotalSeconds,2))s"
 				return
 			}
-			if (-not $secondWakeSent -and ($watch.Elapsed.TotalSeconds -ge 10 -or $delta -match 'Please press Enter to activate this console')) {
+			if ($wakeCount -lt 6 -and $watch.Elapsed.TotalSeconds -ge $nextWakeAt) {
 				$file = Join-Path $commandDir (('{0:D8}-{1}.cmd' -f [DateTimeOffset]::Now.ToUnixTimeMilliseconds(), [guid]::NewGuid().ToString('N')))
 				[IO.File]::WriteAllText($file, [Environment]::NewLine, [Text.UTF8Encoding]::new($false))
-				$secondWakeSent = $true
-				Add-Event 'SERIAL_CONSOLE_SECOND_WAKE' 'no shell prompt after first empty line'
+				$wakeCount++
+				$nextWakeAt = $watch.Elapsed.TotalSeconds + 15
+				Add-Event 'SERIAL_CONSOLE_WAKE_RETRY' "wake_count=$wakeCount; no shell prompt yet"
 			}
 		}
 		Start-Sleep -Milliseconds 250
 	}
-	throw 'Timed out waiting for serial shell prompt after one retry.'
+	throw 'Timed out waiting for serial shell prompt after six empty-line wakes over 240 seconds.'
 }
 
 function Update-VerifiedKnownHost {
