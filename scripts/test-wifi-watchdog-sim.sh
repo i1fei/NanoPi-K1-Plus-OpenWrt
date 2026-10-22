@@ -129,10 +129,12 @@ printf '%s\n' "$*" >> "$WD_TESTDIR/kmodloader-calls"
 exit 0
 EOF
 cat > "$T/bin/sync" <<'EOF'
+#!/bin/sh
 printf '%s\n' sync >> "$WD_TESTDIR/recovery-actions"
 exit 0
 EOF
 cat > "$T/bin/reboot" <<'EOF'
+#!/bin/sh
 printf '%s\n' reboot >> "$WD_TESTDIR/recovery-actions"
 exit 0
 EOF
@@ -359,5 +361,18 @@ if [ "$fail" -eq 0 ]; then
 	rm -rf "$T"
 else
 	echo "FAILED -- artifacts kept in $T"
+	for test_case in A B E F1 F2 F3 F4 G1 G2 G3; do
+		log="$T/$test_case/diag/watchdog.log"
+		if [ -f "$log" ]; then
+			echo "===== $test_case watchdog.log ====="
+			cat "$log"
+		fi
+	done
+	for test_file in iw-dev-ap.txt iw-dev-multi.txt iw-info-ap.txt iw-info-managed.txt iw-calls recovery-actions; do
+		if [ -f "$T/$test_file" ]; then
+			echo "===== $test_file ====="
+			cat "$T/$test_file"
+		fi
+	done
 fi
 exit "$fail"
