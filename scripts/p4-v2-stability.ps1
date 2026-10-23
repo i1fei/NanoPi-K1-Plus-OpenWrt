@@ -24,11 +24,8 @@ if (-not (Test-Path -LiteralPath $privateKey -PathType Leaf)) { throw "SSH key m
 
 function Get-HeartbeatAge {
 	if (-not (Test-Path -LiteralPath $serialLog)) { return [double]::PositiveInfinity }
-	$line = Select-String -LiteralPath $serialLog -Pattern '\] INFO HEARTBEAT pid=' | Select-Object -Last 1
-	if (-not $line) { return [double]::PositiveInfinity }
-	$match = [regex]::Match($line.Line, '^\[(?<stamp>[^\]]+)\]')
-	if (-not $match.Success) { return [double]::PositiveInfinity }
-	try { return ([DateTimeOffset]::Now - [DateTimeOffset]::Parse($match.Groups['stamp'].Value)).TotalSeconds } catch { return [double]::PositiveInfinity }
+	try { return ([DateTimeOffset]::Now - (Get-Item -LiteralPath $serialLog).LastWriteTime).TotalSeconds }
+	catch { return [double]::PositiveInfinity }
 }
 
 function Invoke-DeviceSnapshot {
@@ -50,6 +47,7 @@ while ($watch.Elapsed.TotalSeconds -le $DurationSeconds) {
 		Add-Content -LiteralPath $outputPath -Value $line -Encoding utf8
 		if ($recorderAge -gt 60) { throw "SSH unavailable and COM9 recorder heartbeat older than 60 seconds ($([math]::Round($recorderAge,1))s)." }
 	} else {
+		Add-Content -LiteralPath $outputPath -Value "--- RAW SNAPSHOT $iteration $($now.ToString('o')) ---`n$($snapshot.Text)`n--- END RAW SNAPSHOT ---" -Encoding utf8
 		$uptime = [regex]::Match($snapshot.Text, '(?m)^([0-9]+(?:\.[0-9]+)?)\s+[0-9]+(?:\.[0-9]+)?$')
 		$bootId = [regex]::Match($snapshot.Text, '(?m)^([0-9a-f-]{36})$')
 		$apPresent = $snapshot.Text -match '(?m)^\s*Interface\s+phy0-ap0\s*$'
