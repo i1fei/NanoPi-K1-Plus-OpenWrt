@@ -30,3 +30,20 @@ This file records observed facts only. The wireless startup root cause remains u
 ## Known issue
 
 - In the six v2 recover rounds, five boots had no AP until stage 1 ran near 180 seconds. The cause of delayed AP creation remains unresolved.
+
+## Additional device observations
+
+### Recorded
+
+- B1 ordinary reboot observation: ten requested reboots were recorded. Serial logs show `phy0-ap0` creation from 23.278655s to 24.413122s after boot; all ten were before uptime 60s. The per-boot watchdog records show no stage 1/2/3 event during the observation windows. Evidence: `evidence/device-v2-followup-20261023.md`, `evidence/device-v2-Reboot-20261023-090532/runner.log`, and `reboot-01..10-com9.log` / `reboot-01..10-watchdog.log`.
+- B2 AP deletion injection 1: `iw dev phy0-ap0 del` returned rc 0 at T0 uptime 730.34s; AP was observed again at uptime 873s (141s elapsed), with stage 1 recorded at 873s and no stage 2/3 or reboot in the capture. Evidence: `evidence/device-v2-FaultInjection-20261023-105016/fault-01-delete-ap-*`.
+- B2 AP deletion injection 2: `iw dev phy0-ap0 del` returned rc 0 at T0 uptime 1326.41s. AP remained absent through the monitor's last observation at uptime 2040s; stage 1 was logged at 1450s and stage 2 at 1666s. `killall hostapd` was not run. Evidence: `evidence/device-v2-FaultInjection-20261023-105016/fault-02-delete-ap-*`.
+- B3 driver reload attempt: the sequence `/sbin/kmodloader -r rtl8189es`, `/sbin/kmodloader rtl8189es`, `wifi reload` returned rc 0 for all three commands at T0 uptime 2336s. The AP was absent in the first post-command sample, SSH reset, and the serial log later recorded `reboot: Restarting system` at uptime 2477.783493s. The accepted attribution for this event is watchdog stage 3, based on the complete watchdog/serial log chain; B3 command completion preceded it but the command output itself does not identify the reboot initiator. Evidence: `evidence/device-v2-FaultInjection-20261023-105016/b3-driver-reload.log`, `b3-post-sequence-snapshot.log`, `b3-com9-tail.log`, and `evidence/incident-2477-readonly-20261023/`.
+- Wireless startup comparison: the accepted log comparison found that failed startup windows lacked `cfg80211_rtw_add_virtual_intf(phy0)` and `rtw_ndev_init(phy0-ap0)` before the delayed recovery, while normal startup samples recorded those events near 24s. In the six v2 recover rounds, AP creation was recorded at 34.172140s in R01 and 179.350525–183.400230s in R02–R06. The parser defect in the earlier watchdog was separately reproduced: the real indented `iw dev` output did not satisfy its beginning-of-line interface match. The startup reason for the delayed AP creation remains unresolved. Evidence: `evidence/wifi-watchdog-v2-generation-map.md`, `evidence/P4/recover-v2-r397106-01/` through `-06/`, `evidence/device-v2-Reboot-20261023-090532/`, and `../nanopi-release-bridge/evidence/live-fail-old-fw-20261020-181031/device-capture-redacted.log`.
+
+### Not recorded or incomplete
+
+- The second `killall hostapd` injection, further B2 injections, and a clean TF-card first boot have not been recorded. The second delete-AP attempt did not meet the required AP-stable precondition for the next injection.
+- B3 does not establish the effect of an isolated driver unload/reload: the command sequence was issued while AP recovery was still incomplete and watchdog stage 2 was active. No isolated rerun was performed.
+- The eight-hour stability observation was not completed. The run stopped after the reboot event; the available stability record is two hours, not eight.
+- Clean-card first boot remains pending the user's physical write, insertion, and power-on. No device commands are sent before the user reports power-on.
