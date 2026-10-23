@@ -161,6 +161,9 @@ if ($Mode -eq 'Reboot') {
 		$before = Get-Snapshot "$prefix-before.log"
 		if ($before.ExitCode -ne 0) { throw "Cannot read pre-reboot state for $prefix." }
 		$oldBoot = Get-BootId $before.Text
+		$lineCountResult = Invoke-SSH 'wc -l < /root/wifi-diag/watchdog.log 2>/dev/null || echo 0' "$prefix-watchdog-linecount.log" 10
+		if ($lineCountResult.ExitCode -ne 0 -or $lineCountResult.Text -notmatch '(?m)^\s*\d+\s*$') { throw "$prefix cannot establish watchdog log boundary." }
+		$watchdogLineCount = [int]([regex]::Match($lineCountResult.Text, '(?m)^\s*(\d+)\s*$').Groups[1].Value)
 		$offset = Get-SerialOffset
 		Add-Event "$prefix request reboot boot_id=$oldBoot uptime=$(Get-Uptime $before.Text)"
 		$reboot = Invoke-SSH 'reboot' "$prefix-reboot-command.log" 10
@@ -172,11 +175,23 @@ if ($Mode -eq 'Reboot') {
 		$finish = Wait-Uptime $bootId 600 $prefix
 		$watchdog = Save-Watchdog $prefix
 		$serial = Save-Serial $offset $prefix
-		$stage = @($watchdog -split "`n" | Where-Object { $_ -match 'health recovered|recovery stage [123]:|stage3 aborted|HEALTH|reboot suppressed by cooldown' }) -join ' || '
-		$reboots = @([regex]::Matches($serial.Text, '\[\s*([0-9]+(?:\.[0-9]+)?)\].{0,80}reboot: Restarting system') | ForEach-Object { $_.Groups[1].Value }) -join ','
-		$line = "| $round | $bootId | $($serial.Phy) | $($serial.AP) | $stage | $reboots | $($finish.Uptime) | $($finish.Snapshot.Path) |"
+		$watchdogRows = @($watchdog -split "`r?`n" | Select-Object -Skip $watchdogLineCount)
+		$watchdogEvents = @($watchdogRows | Where-Object { $_ -match 'health recovered|recovery stage [123]:|stage3 aborted|HEALTH|reboot suppressed by cooldown' })
+		[IO.File]::WriteAllLines((Join-Path $evidenceDir "$prefix-watchdog-events.log"), [string[]]$watchdogEvents, [Text.UTF8Encoding]::new($false))
+		$rebootMatches = [regex]::Matches($serial.Text, '\[\s*([0-9]+(?:\.[0-9]+)?)\].{0,80}reboot: Restarting system')
+		if ($rebootMatches.Count -eq 0) { throw "$prefix COM9 segment lacks the requested reboot marker; raw segment retained." }
+		$bootStart = $rebootMatches[0].Index + $rebootMatches[0].Length
+		$bootEnd = if ($rebootMatches.Count -gt 1) { $rebootMatches[1].Index } else { $serial.Text.Length }
+		$startupText = $serial.Text.Substring($bootStart, $bootEnd - $bootStart)
+		$phy = [regex]::Match($startupText, '\[\s*([0-9]+(?:\.[0-9]+)?)\].{0,180}(?:wiphy_register\(phy0\)|phy0.*registered)')
+		$ap = [regex]::Match($startupText, '\[\s*([0-9]+(?:\.[0-9]+)?)\].{0,220}phy0-ap0')
+		$phyUptime = if ($phy.Success) { $phy.Groups[1].Value } else { 'not-recorded' }
+		$apUptime = if ($ap.Success) { $ap.Groups[1].Value } else { 'not-recorded' }
+		$unexpectedReboots = @($rebootMatches | Select-Object -Skip 1 | ForEach-Object { $_.Groups[1].Value }) -join ','
+		$eventText = $watchdogEvents -join ' || '
+		$line = "| $round | $bootId | $phyUptime | $apUptime | $eventText | $unexpectedReboots | $($finish.Uptime) | $($finish.Snapshot.Path) |"
 		Write-Evidence (Join-Path $evidenceDir 'results.md') $line
-		Add-Event "$prefix complete phy0=$($serial.Phy) phy0-ap0=$($serial.AP) uptime=$($finish.Uptime) reboots=$reboots"
+		Add-Event "$prefix complete phy0=$phyUptime phy0-ap0=$apUptime uptime=$($finish.Uptime) unexpected_reboots=$unexpectedReboots"
 		Write-Output "RESULT=$line"
 	}
 }
