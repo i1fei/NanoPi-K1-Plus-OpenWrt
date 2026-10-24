@@ -62,6 +62,7 @@ export PATH="$T/bin:$PATH"
 
 run_case() {
 	name=$1
+	case_rc=0
 	: > "$T/settle.log"; : > "$T/wifi-calls"; rm -f "$T/reload-marker" "$T/ap" "$T/disabled"
 	printf '40\n' > "$T/uptime"; printf '0\n' > "$T/cksum-count"; printf 'stable\n' > "$T/cksum-mode"
 	case "$name" in
@@ -69,19 +70,25 @@ run_case() {
 		config-changing) printf 'changing\n' > "$T/cksum-mode" ;;
 		admin-disabled) printf '1\n' > "$T/disabled" ;;
 	esac
-	WD_AP_AFTER_RELOAD=${2:-0} sh "$T/settle"
+	if WD_AP_AFTER_RELOAD=${2:-0} sh "$T/settle"; then
+		:
+	else
+		case_rc=$?
+		echo "settle case $name exited with rc=$case_rc"
+		cat "$T/settle.log"
+	fi
 }
 
 echo '== settle decision paths =='
 run_case ap-present
-ck 'AP present exits without reload' "! grep -q '^reload$' '$T/wifi-calls' && grep -q 'AP present' '$T/settle.log'"
+ck 'AP present exits without reload' "[ '$case_rc' = 0 ] && ! grep -q '^reload$' '$T/wifi-calls' && grep -q 'AP present' '$T/settle.log'"
 run_case admin-disabled
-ck 'administrator disabled exits without reload' "! grep -q '^reload$' '$T/wifi-calls' && grep -q 'administrator disabled' '$T/settle.log'"
+ck 'administrator disabled exits without reload' "[ '$case_rc' = 0 ] && ! grep -q '^reload$' '$T/wifi-calls' && grep -q 'administrator disabled' '$T/settle.log'"
 run_case config-changing
-ck 'changing config waits and times out without reload' "! grep -q '^reload$' '$T/wifi-calls' && grep -q 'timeout waiting' '$T/settle.log'"
+ck 'changing config waits and times out without reload' "[ '$case_rc' = 0 ] && ! grep -q '^reload$' '$T/wifi-calls' && grep -q 'timeout waiting' '$T/settle.log'"
 run_case reload-restores 1
-ck 'stable missing AP triggers exactly one reload and detects AP' "[ \$(grep -c '^reload$' '$T/wifi-calls') -eq 1 ] && grep -q 'AP appeared' '$T/settle.log'"
+ck 'stable missing AP triggers exactly one reload and detects AP' "[ '$case_rc' = 0 ] && [ \$(grep -c '^reload$' '$T/wifi-calls') -eq 1 ] && grep -q 'AP appeared' '$T/settle.log'"
 run_case reload-misses
-ck 'missing AP after reload is logged and exits' "[ \$(grep -c '^reload$' '$T/wifi-calls') -eq 1 ] && grep -q 'AP still missing' '$T/settle.log'"
+ck 'missing AP after reload is logged and exits' "[ '$case_rc' = 0 ] && [ \$(grep -c '^reload$' '$T/wifi-calls') -eq 1 ] && grep -q 'AP still missing' '$T/settle.log'"
 
 if [ "$fail" -eq 0 ]; then echo 'ALL PASS'; rm -rf "$T"; else echo "FAILED; artifacts: $T"; exit 1; fi
