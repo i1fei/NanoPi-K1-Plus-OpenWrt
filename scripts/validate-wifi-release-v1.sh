@@ -39,10 +39,18 @@ for path in \
 	etc/config/k1plus_network \
 	etc/config/k1plus_watchdog \
 	etc/uci-defaults/99-k1-plus-wifi-release-v1 \
+	etc/uci-defaults/00-k1plus-trace \
+	etc/uci-defaults/99zz-k1plus-trace \
 	etc/init.d/k1plus-network \
 	etc/init.d/k1plus-wifi-watchdog \
+	etc/init.d/k1plus-wifi-settle \
+	etc/init.d/k1plus-wifi-trace-19 \
+	etc/init.d/k1plus-wifi-trace-21 \
 	etc/init.d/k1plus-hw-watchdog \
+	etc/hotplug.d/ieee80211/00-k1plus-trace \
 	usr/libexec/wifi-diag-collect.sh \
+	usr/libexec/k1plus-wifi-trace \
+	usr/libexec/k1plus-wifi-settle \
 	etc/profile.d/99-k1-plus-wifi.sh \
 	usr/libexec/k1plus-dhcp-event \
 	usr/sbin/k1plus-network-mode \
@@ -52,10 +60,18 @@ done
 
 for path in \
 	etc/uci-defaults/99-k1-plus-wifi-release-v1 \
+	etc/uci-defaults/00-k1plus-trace \
+	etc/uci-defaults/99zz-k1plus-trace \
 	etc/init.d/k1plus-network \
 	etc/init.d/k1plus-wifi-watchdog \
+	etc/init.d/k1plus-wifi-settle \
+	etc/init.d/k1plus-wifi-trace-19 \
+	etc/init.d/k1plus-wifi-trace-21 \
 	etc/init.d/k1plus-hw-watchdog \
+	etc/hotplug.d/ieee80211/00-k1plus-trace \
 	usr/libexec/wifi-diag-collect.sh \
+	usr/libexec/k1plus-wifi-trace \
+	usr/libexec/k1plus-wifi-settle \
 	usr/libexec/k1plus-dhcp-event \
 	usr/sbin/k1plus-network-mode \
 	usr/sbin/k1plus-wifi-watchdog; do

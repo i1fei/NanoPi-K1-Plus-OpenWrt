@@ -78,6 +78,9 @@ jobs:
             scripts/test-wifi-watchdog-sim.sh \
             overlays/wifi_release_v1/files/usr/sbin/k1plus-wifi-watchdog \
             overlays/wifi_release_v1/files/usr/libexec/wifi-diag-collect.sh
+          PATH="$GITHUB_WORKSPACE/.work/busybox-bin:$PATH" busybox sh \
+            scripts/test-wifi-settle.sh \
+            overlays/wifi_release_v1/files/usr/libexec/k1plus-wifi-settle
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
