@@ -16,7 +16,7 @@ printf '0\n' > "$T/cksum-count"
 : > "$T/wifi-calls"
 : > "$T/ap"
 sed \
-	-e "s#/root/wifi-diag/settle.log#$T/settle.log#g" \
+	-e "s#/root/wifi-diag#$T#g" \
 	-e "s#/tmp/k1plus-wifi-settle-reload#$T/reload-marker#g" \
 	-e "s#/etc/config/wireless#$T/wireless#g" \
 	-e "s#/sys/class/ieee80211/phy0#$T/sys/ieee80211/phy0#g" \
