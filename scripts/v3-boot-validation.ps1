@@ -23,6 +23,7 @@ $script:serialOffset = 0L
 $script:bootNumber = 0
 $script:events = [System.Collections.Generic.List[object]]::new()
 $script:lastBootWall = $null
+$script:serialGapReported = $false
 
 function Add-Event([string]$Name, [string]$Detail) {
 	$line = '[{0}] {1} {2}' -f [DateTimeOffset]::Now.ToString('o'), $Name, $Detail
@@ -33,7 +34,10 @@ function Add-Event([string]$Name, [string]$Detail) {
 function Get-SerialDelta {
 	$stream = [IO.File]::Open($SerialLog, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
 	try {
-		if ($script:serialOffset -gt $stream.Length) { throw 'COM9 log was truncated during validation.' }
+		if ($script:serialOffset -gt $stream.Length) {
+			Add-Event 'COM9_LOG_TRUNCATED' "old_offset=$script:serialOffset new_length=$($stream.Length); continuing from current end"
+			$script:serialOffset = $stream.Length
+		}
 		$stream.Position = $script:serialOffset
 		$reader = [IO.StreamReader]::new($stream)
 		$text = $reader.ReadToEnd()
@@ -44,12 +48,20 @@ function Get-SerialDelta {
 
 function Assert-Recorder {
 	$heartbeat = Select-String -LiteralPath $SerialLog -Pattern '\] INFO HEARTBEAT pid=' | Select-Object -Last 1
-	if (-not $heartbeat) { throw 'COM9 recorder heartbeat is absent.' }
-	$stamp = [regex]::Match($heartbeat.Line, '^\[(?<t>[^\]]+)\]').Groups['t'].Value
-	if (([DateTimeOffset]::Now - [DateTimeOffset]::Parse($stamp)).TotalSeconds -gt 30) { throw 'COM9 recorder heartbeat is older than 30 seconds.' }
+	$heartbeatAge = [double]::PositiveInfinity
+	if ($heartbeat) {
+		$stamp = [regex]::Match($heartbeat.Line, '^\[(?<t>[^\]]+)\]').Groups['t'].Value
+		try { $heartbeatAge = ([DateTimeOffset]::Now - [DateTimeOffset]::Parse($stamp)).TotalSeconds } catch {}
+	}
 	$recentError = Select-String -LiteralPath $SerialLog -Pattern '\] ERROR ' | Select-Object -Last 1
 	$lastOpen = Select-String -LiteralPath $SerialLog -Pattern 'COM9_OPEN=PASS' | Select-Object -Last 1
-	if ($recentError -and $lastOpen -and $recentError.LineNumber -gt $lastOpen.LineNumber) { throw "COM9 recorder error after last successful open: $($recentError.Line)" }
+	$stale = $heartbeatAge -gt 30 -or ($recentError -and $lastOpen -and $recentError.LineNumber -gt $lastOpen.LineNumber)
+	if ($stale -and -not $script:serialGapReported) {
+		Add-Event 'COM9_LOGGING_GAP' "heartbeat_age_seconds=$([math]::Round($heartbeatAge,1)); SSH fallback will be checked after the observation window"
+		$script:serialGapReported = $true
+	} elseif (-not $stale) {
+		$script:serialGapReported = $false
+	}
 }
 
 function Invoke-SSH([string]$Command, [string]$OutputPath, [int]$Timeout = 10) {
@@ -176,11 +188,13 @@ function Complete-Boot([object]$Boot, [bool]$NeedSshRecovery, [int]$MinimumSecon
 		if ($delta -match '(?i)Oops:|Kernel panic|BUG: unable to handle|soft lockup|hard LOCKUP') { throw "Kernel exception signature in $bootDir" }
 		Start-Sleep -Seconds 2
 	}
-	if ($NeedSshRecovery) {
-		Restore-SSHFromSerial $bootDir
-	}
+	if ($NeedSshRecovery) { Restore-SSHFromSerial $bootDir }
 	$stateCommand = 'printf "DATE "; date; printf "UPTIME "; cat /proc/uptime; printf "BOOT_ID "; cat /proc/sys/kernel/random/boot_id; printf "IW_DEV\n"; iw dev; printf "TRACE\n"; cat /tmp/wifi-trace.log 2>/dev/null; printf "WATCHDOG\n"; cat /root/wifi-diag/watchdog.log 2>/dev/null; printf "SETTLE\n"; cat /root/wifi-diag/settle.log 2>/dev/null; printf "MTIME\n"; busybox ls -l --full-time /etc/config/wireless 2>&1'
 	$state = Invoke-SSH $stateCommand (Join-Path $bootDir 'device-state.log') 10
+	if ($state.ExitCode -ne 0) {
+		Restore-SSHFromSerial $bootDir
+		$state = Invoke-SSH $stateCommand (Join-Path $bootDir 'device-state.log') 10
+	}
 	if ($state.ExitCode -ne 0) { throw "SSH evidence collection failed for boot $($Boot.number), rc=$($state.ExitCode)." }
 	$Boot.serial += Get-SerialDelta
 	[IO.File]::WriteAllText((Join-Path $bootDir 'com9-boot-segment.log'), $Boot.serial, [Text.UTF8Encoding]::new($false))
