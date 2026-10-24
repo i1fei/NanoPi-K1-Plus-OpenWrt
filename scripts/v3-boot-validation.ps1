@@ -65,15 +65,15 @@ function Assert-Recorder {
 }
 
 function Invoke-SSH([string]$Command, [string]$OutputPath, [int]$Timeout = 10) {
-	$args = @('-T', '-o', "ConnectTimeout=$Timeout", '-o', 'BatchMode=yes', '-o', 'IdentitiesOnly=yes', '-o', 'StrictHostKeyChecking=yes', '-o', "UserKnownHostsFile=$KnownHosts", '-i', $PrivateKey, 'root@192.168.1.1', $Command)
-	$out = @(& $pwsh -NoProfile -File $netRun ssh @args 2>&1)
+	$sshArgs = @('-T', '-o', "ConnectTimeout=$Timeout", '-o', 'BatchMode=yes', '-o', 'IdentitiesOnly=yes', '-o', 'StrictHostKeyChecking=yes', '-o', "UserKnownHostsFile=$KnownHosts", '-i', $PrivateKey, 'root@192.168.1.1', $Command)
+	$out = @(& $pwsh -NoProfile -File $netRun ssh @sshArgs 2>&1)
 	$rc = $LASTEXITCODE
 	if ($OutputPath) { [IO.File]::WriteAllLines($OutputPath, [string[]]$out, [Text.UTF8Encoding]::new($false)) }
 	return [pscustomobject]@{ ExitCode = $rc; Text = ($out -join [Environment]::NewLine) }
 }
 
-function Invoke-SCP([string[]]$Args, [string]$OutputPath) {
-	$out = @(& $pwsh -NoProfile -File $netRun scp -O -o ConnectTimeout=10 -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$KnownHosts" -i $PrivateKey @Args 2>&1)
+function Invoke-SCP([string[]]$ScpArguments, [string]$OutputPath) {
+	$out = @(& $pwsh -NoProfile -File $netRun scp -O -o ConnectTimeout=10 -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$KnownHosts" -i $PrivateKey @ScpArguments 2>&1)
 	$rc = $LASTEXITCODE
 	[IO.File]::WriteAllLines($OutputPath, [string[]]$out, [Text.UTF8Encoding]::new($false))
 	if ($rc -ne 0) { throw "SCP failed (rc=$rc): $($out -join ' ')" }
@@ -228,13 +228,13 @@ function Complete-Boot([object]$Boot, [bool]$NeedSshRecovery, [int]$MinimumSecon
 }
 
 if ($PriorFlashCount -ge $FlashLimit) { throw "Flash limit already reached ($PriorFlashCount/$FlashLimit)." }
+New-Item -ItemType Directory -Force -Path $EvidenceRoot | Out-Null
 if (-not (Test-Path -LiteralPath $ImagePath -PathType Leaf)) { throw "Image not found: $ImagePath" }
 if (-not (Test-Path -LiteralPath $SerialLog -PathType Leaf)) { throw "COM9 log not found: $SerialLog" }
 Assert-Recorder
 $actualImageHash = (Get-FileHash -LiteralPath $ImagePath -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($actualImageHash -ne $ImageSha256.ToLowerInvariant()) { throw "Local image hash mismatch: expected=$ImageSha256 actual=$actualImageHash" }
 if ((Get-FileHash -LiteralPath $PrivateKey -Algorithm SHA256).Hash.Length -ne 64) { throw 'SSH private key unreadable.' }
-New-Item -ItemType Directory -Force -Path $EvidenceRoot | Out-Null
 $script:serialOffset = (Get-Item -LiteralPath $SerialLog).Length
 Add-Event 'VALIDATION_START' "run=$RunId flash_count_before=$PriorFlashCount/$FlashLimit image_sha256=$actualImageHash"
 
