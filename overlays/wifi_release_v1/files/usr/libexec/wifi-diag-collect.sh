@@ -75,6 +75,7 @@ run() { # run <name> <shell snippet>
   echo "reason=$REASON"
   echo "boot_id=$BOOT_ID"
   echo "uptime_s=$(up)"
+  echo "proc_uptime=$(cat /proc/uptime 2>/dev/null)"
   echo "date=$(date '+%F %T %Z')  (may be unsynced early in boot)"
   echo "radio=$RADIO iface=$IFACE"
   echo "watchdog_mode=$(cat "$MODEFILE" 2>/dev/null || echo default)"
@@ -96,11 +97,11 @@ run 41-ubus-iface   'ubus call network.interface dump'
 run 42-ubus-list    "ubus list | grep -Ei 'network|hostapd|wpa'"
 run 43-wifi-status  'wifi status'
 run 50-ps           'ps w'
-run 51-run-files    'ls -le /var/run/ | grep -Ei "hostapd|wpa|wifi|netifd"; ls -le /tmp/run'
+run 51-run-files    'ls -l --full-time /var/run/ | grep -Ei "hostapd|wpa|wifi|netifd"; ls -l --full-time /tmp/run'
 run 60-uci-wireless 'uci show wireless'
 run 61-cfg-wireless "cat '$CFGDIR/wireless'"
 run 62-cfg-network  "cat '$CFGDIR/network'"
-run 63-mtimes       "ls -le '$CFGDIR/wireless' '$CFGDIR/network' /etc/board.json /etc/wifi-release-done /etc/rc.local; ls -le /etc/rc.d | grep -Ei 'network|wifi|boot|release|watchdog'; ls -le /etc/init.d | grep -Ei 'wifi|release|watchdog'"
+run 63-mtimes       "ls -l --full-time '$CFGDIR/wireless' '$CFGDIR/network' /etc/board.json /etc/wifi-release-done /etc/rc.local; ls -l --full-time /etc/rc.d | grep -Ei 'network|wifi|boot|release|watchdog'; ls -l --full-time /etc/init.d | grep -Ei 'wifi|release|watchdog'"
 run 70-watchdog-log "cat '$BASE/watchdog.log'"
 
 # keep only the newest MAX_BUNDLES bundles (never touches the current one)

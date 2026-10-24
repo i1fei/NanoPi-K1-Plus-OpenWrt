@@ -19,6 +19,19 @@ ck() {
 	fi
 }
 
+echo "== collector BusyBox ls compatibility =="
+if grep -Eq 'ls[[:space:]]+-e([[:space:]]|[^-])' "$COLLECTOR_SCRIPT"; then
+	echo "FAIL  collector does not use BusyBox-compatible ls options"
+	fail=1
+else
+	echo "PASS  collector has no unsupported ls -e option"
+fi
+if command -v busybox >/dev/null 2>&1; then
+	ck "BusyBox supports collector full-time listing" "busybox ls -l --full-time '$T' >/dev/null"
+else
+	echo "SKIP  BusyBox binary unavailable in this local shell"
+fi
+
 make_stage_fixture() {
 	stage_value=$1
 	output_file=$2

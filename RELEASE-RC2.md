@@ -5,7 +5,7 @@ This file records observed facts only. The wireless startup root cause remains u
 ## Images
 
 - Recover image: Run `39710625084`, commit `1ba2a5c32070f9fca7b1042d32190c472fd97021`, SHA-256 `ede008aeaa324dcc8bd6f2de1aff2e3eb5a9bcb50944f187f1916005c3dad525`.
-- Raw image extracted from the Run artifact: SHA-256 `ED66ED2E37A41B4EF9AF8505345DBD5FA5C1CF13727DA732AF5B92E07D7E6662`, 31,893,691 bytes. It has not been written to a clean TF card.
+- Raw image extracted from the Run artifact: SHA-256 `ED66ED2E37A41B4EF9AF8505345DBD5FA5C1CF13727DA732AF5B92E07D7E6662`, 31,893,691 bytes. It was written to a clean TF card for the clean-card observation.
 - Observe image: not built for v2.
 
 ## 已验证
@@ -15,6 +15,8 @@ This file records observed facts only. The wireless startup root cause remains u
 - AP first appeared at 34.172140 seconds in R01, 181.216914 in R02, 183.400230 in R03, 183.048513 in R04, 180.899256 in R05, and 179.350525 in R06.
 - Stage 1 `wifi reload` was recorded in R02–R06 at 180, 182, 182, 180, and 178 seconds respectively. Stage 2, `health recovered`, stage 3 abort, and watchdog reboot events were not recorded in these six rounds.
 - The two-hour stability observation recorded 24 successful SSH samples, AP present in all samples, unchanged boot ID, and no recorded reboot; see `evidence/P4/stability-v2-20261022-163948.log`.
+- Clean-card observation used the raw Run `39710625084` image with an empty overlay and no sysupgrade. The pre-reload capture at uptime 177s had no `phy0-ap0` in `iw dev` or sysfs, empty `radio0.interfaces`, and no `hostapd.phy0-ap0`; stage 1 created the AP at 179.350525s and it was present in the later snapshots through uptime 900s. Evidence: `evidence/clean-card-20261024-111524-index.md` and `evidence/clean-card-20261024-111524/`.
+- Correction to an earlier record: the 23.965695/23.983443 AP timestamps were imported from another COM9 log segment and do not belong to this clean-card boot.
 - CI cooldown tests passed. The six round watchdog logs and the current device watchdog log contain no `reboot suppressed by cooldown` event; device execution of that branch is unverified.
 - Current device snapshot was read over SSH on 2026-10-23: mode `recover`, AP interface `phy0-ap0` present, watchdog SHA-256 `6d64faad8cb24ad78f7ee634554feb70761b0b65c77153bcbd5322b520dedc75`, boot ID `b6831a18-0d14-46db-b277-750550baaa7c`.
 
@@ -25,6 +27,7 @@ This file records observed facts only. The wireless startup root cause remains u
 - Q3 mode A/B, automatic switch-back, and address-conflict checks.
 - Five normal reboots, Wi-Fi rapid reconnect, idle recovery, online driver unload/reload, multi-client test, and eight-hour stability are not present in the old AC record. The six v2 boot rounds and two-hour stability are separate evidence and do not cover those checks.
 - The v2 real-device cooldown suppression path has not been exercised.
+- The clean-card boot's exact first SSH-login uptime was not separately recorded; 301.554858s is the SSH-install command completion time.
 - Q/X4 is not defined as a standalone acceptance label in `AC-REPORT.md`; that document labels Q3, X, and Q4 separately.
 
 ## Known issue
@@ -40,6 +43,7 @@ This file records observed facts only. The wireless startup root cause remains u
 ## 追加记录：已验证
 
 - B1 ordinary reboot observation: ten requested reboots were recorded. Serial logs show `phy0-ap0` creation from 23.278655s to 24.413122s after boot; all ten were before uptime 60s. The per-boot watchdog records show no stage 1/2/3 event during the observation windows. Evidence: `evidence/device-v2-followup-20261023.md`, `evidence/device-v2-Reboot-20261023-090532/runner.log`, and `reboot-01..10-com9.log` / `reboot-01..10-watchdog.log`.
+- B1 log-collection correction: the ten `reboot-01..10-watchdog.log` files are cumulative snapshots; their repeated historical `up=56s healthy_rc=1` line is not ten per-boot first HEALTH lines. The current boot's first HEALTH lines are at 53/54s with `healthy_rc=0`; the COM9 AP creation times remain 23.278655s–24.413122s. Detailed per-round values: `evidence/com9-segmentation-20261024.md`.
 - B2 AP deletion injection 1: `iw dev phy0-ap0 del` returned rc 0 at T0 uptime 730.34s; AP was observed again at uptime 873s (141s elapsed), with stage 1 recorded at 873s and no stage 2/3 or reboot in the capture. Evidence: `evidence/device-v2-FaultInjection-20261023-105016/fault-01-delete-ap-*`.
 - B2 AP deletion injection 2: `iw dev phy0-ap0 del` returned rc 0 at T0 uptime 1326.41s. AP remained absent through the monitor's last observation at uptime 2040s; stage 1 was logged at 1450s and stage 2 at 1666s. `killall hostapd` was not run. Evidence: `evidence/device-v2-FaultInjection-20261023-105016/fault-02-delete-ap-*`.
 - B3 driver reload attempt: the sequence `/sbin/kmodloader -r rtl8189es`, `/sbin/kmodloader rtl8189es`, `wifi reload` returned rc 0 for all three commands at T0 uptime 2336s. The AP was absent in the first post-command sample, SSH reset, and the serial log later recorded `reboot: Restarting system` at uptime 2477.783493s. The accepted attribution for this event is watchdog stage 3, based on the complete watchdog/serial log chain; B3 command completion preceded it but the command output itself does not identify the reboot initiator. Evidence: `evidence/device-v2-FaultInjection-20261023-105016/b3-driver-reload.log`, `b3-post-sequence-snapshot.log`, `b3-com9-tail.log`, and `evidence/incident-2477-readonly-20261023/`.
