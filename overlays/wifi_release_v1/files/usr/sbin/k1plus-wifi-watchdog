@@ -5,8 +5,9 @@
 tag=k1plus-wifi-watchdog
 failures=0
 stage=0
-last_recovery=0
 recovery_count=0
+recovery_window_start=0
+recovery_limit_logged=0
 health_checks=0
 last_health_signature=
 last_reboot_cooldown_log=0
@@ -103,16 +104,19 @@ administrator_disabled() {
 
 allow_recovery() {
 	now=$(date +%s)
-	if [ "$last_recovery" -eq 0 ] || [ "$now" -ge $((last_recovery + recovery_window)) ]; then
+	if [ "$recovery_window_start" -eq 0 ] || [ "$now" -ge $((recovery_window_start + recovery_window)) ]; then
 		recovery_count=0
+		recovery_window_start=$now
+		recovery_limit_logged=0
 	fi
-	recovery_count=$((recovery_count + 1))
-	last_recovery=$now
-	if [ "$recovery_count" -gt "$max_recoveries" ]; then
-		event "recovery limit exceeded (${max_recoveries}/${recovery_window}s); automatic recovery disabled"
-		printf '%s\n' 'Automatic WiFi recovery disabled after repeated escalations.' > /root/WATCHDOG-DISABLED.txt
+	if [ "$recovery_count" -ge "$max_recoveries" ]; then
+		if [ "$recovery_limit_logged" -eq 0 ]; then
+			event "recovery limit reached; suppressing until window ends (${max_recoveries}/${recovery_window}s)"
+			recovery_limit_logged=1
+		fi
 		return 1
 	fi
+	recovery_count=$((recovery_count + 1))
 	return 0
 }
 
@@ -202,7 +206,7 @@ while :; do
 
 	case "$stage" in
 		0)
-			allow_recovery || exit 0
+			allow_recovery || continue
 			event 'recovery stage 1: wifi reload'
 			run_bounded wifi reload
 			result=$?
@@ -220,7 +224,7 @@ while :; do
 			stage=1
 			;;
 		1)
-			allow_recovery || exit 0
+			allow_recovery || continue
 			"$diag_collect" pre-driver-reload "fails=$threshold stage=$stage"
 			event "collect tag=pre-driver-reload rc=$?"
 			event 'recovery stage 2: driver reload'
@@ -241,7 +245,7 @@ while :; do
 			stage=2
 			;;
 		*)
-			allow_recovery || exit 0
+			allow_recovery || continue
 			"$diag_collect" pre-reboot "stage=$stage"
 			event "collect tag=pre-reboot rc=$?"
 			if healthy; then

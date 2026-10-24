@@ -139,7 +139,7 @@ EOF
 cat > "$T/bin/wifi" <<'EOF'
 #!/bin/sh
 printf '%s\n' "$*" >> "$WD_TESTDIR/wifi-calls"
-if [ "$1" = reload ]; then
+if [ "$1" = reload ] && [ "${WD_TEST_NO_AP_ON_RELOAD:-0}" != 1 ]; then
 	mkdir -p "$WD_SYSNET/phy0-ap0" "$WD_SYSNET/br-lan/brif"
 fi
 EOF
@@ -383,12 +383,27 @@ printf '%s\n' "$((now - 3601))" > "$S/reboot-stamp"
 run_watchdog "$S" 0 "$T/watchdog-stage2" 0 0 "$T/iw-dev-empty.txt" "$T/iw-info-ap.txt" 1 3 || true
 ck "G3 reboot is allowed after cooldown expires" "grep -q 'recovery stage 3: reboot' '$S/diag/watchdog.log' && grep -Eq '^(sync|reboot)$' '$T/recovery-actions'"
 
+echo "== H: recovery limit suppression expires without exiting =="
+setup H recover
+WD_TEST_INTERVAL=1 WD_TEST_THRESHOLD=1 WD_TEST_COMMAND_TIMEOUT=5 \
+	WD_TEST_RELOAD_GRACE=1 WD_TEST_RECOVERY_WINDOW=5 WD_TEST_MAX_RECOVERIES=1 \
+	WD_TESTDIR="$T" WD_TEST_CREATE_ON_SLEEP=0 WD_TEST_EXTERNAL_RECOVERY=0 \
+	WD_TEST_STOP_AFTER_OBSERVE=0 WD_TEST_STOP_AFTER_RECOVERY=0 \
+	WD_TEST_NO_AP_ON_RELOAD=1 WD_SYSNET="$S/sysnet" WIFI_DIAG_BASE="$S/diag" \
+	WD_MODEFILE="$S/mode" WD_PROVISION_MARKER="$S/provisioned" \
+	WD_DISABLED_MARKER="$S/disabled" WD_REBOOT_STAMP="$S/reboot-stamp" \
+	WD_LIB_FUNCTIONS="$T/lib-functions.sh" WD_CFGDIR="$T/cfg" \
+	WD_COLLECT="$T/collector" WD_KMODLOADER="$T/bin/kmodloader" \
+	PATH="$T/bin:$PATH" sh "$T/watchdog"
+ck "H recovery limit is logged without creating disable marker" "grep -q 'recovery limit reached; suppressing until window ends' '$S/diag/watchdog.log' && [ ! -e '$S/disabled' ]"
+ck "H watchdog continues and recovery resumes after window" "grep -q 'recovery stage 2: driver reload' '$S/diag/watchdog.log'"
+
 if [ "$fail" -eq 0 ]; then
 	echo ALL PASS
 	rm -rf "$T"
 else
 	echo "FAILED -- artifacts kept in $T"
-	for test_case in A B E F1 F2 F3 F4 G1 G2 G3; do
+	for test_case in A B E F1 F2 F3 F4 G1 G2 G3 H; do
 		log="$T/$test_case/diag/watchdog.log"
 		if [ -f "$log" ]; then
 			echo "===== $test_case watchdog.log ====="
