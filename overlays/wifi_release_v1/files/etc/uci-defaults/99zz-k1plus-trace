@@ -1,0 +1,4 @@
+#!/bin/sh
+
+/usr/libexec/k1plus-wifi-trace uci-defaults:99zz
+exit 0

@@ -1,0 +1,3 @@
+#!/bin/sh
+
+/usr/libexec/k1plus-wifi-trace hotplug:ieee80211

@@ -105,6 +105,12 @@ if [ "$PATCH_MODE" = "wifi_release_v1" ]; then
 	install -D -m 0755 \
 		"$ROOT_DIR/overlays/wifi_release_v1/files/usr/sbin/k1plus-wifi-watchdog" \
 		"$SOURCE_DIR/files/usr/sbin/k1plus-wifi-watchdog"
+	install -D -m 0755 \
+		"$ROOT_DIR/overlays/wifi_release_v1/files/usr/libexec/k1plus-wifi-trace" \
+		"$SOURCE_DIR/files/usr/libexec/k1plus-wifi-trace"
+	install -d "$SOURCE_DIR/files/etc/rc.d"
+	ln -sf ../init.d/k1plus-wifi-trace-19 "$SOURCE_DIR/files/etc/rc.d/S19k1plus-wifi-trace-19"
+	ln -sf ../init.d/k1plus-wifi-trace-21 "$SOURCE_DIR/files/etc/rc.d/S21k1plus-wifi-trace-21"
 	echo "INSTALLED diagnostic watchdog tools with mode 0755"
 fi
 

@@ -103,6 +103,7 @@ run 61-cfg-wireless "cat '$CFGDIR/wireless'"
 run 62-cfg-network  "cat '$CFGDIR/network'"
 run 63-mtimes       "ls -l --full-time '$CFGDIR/wireless' '$CFGDIR/network' /etc/board.json /etc/wifi-release-done /etc/rc.local; ls -l --full-time /etc/rc.d | grep -Ei 'network|wifi|boot|release|watchdog'; ls -l --full-time /etc/init.d | grep -Ei 'wifi|release|watchdog'"
 run 70-watchdog-log "cat '$BASE/watchdog.log'"
+run 71-wifi-trace    'cat /tmp/wifi-trace.log'
 
 # keep only the newest MAX_BUNDLES bundles (never touches the current one)
 n="$(ls -1d "$BASE"/bundle-* 2>/dev/null | wc -l)"
