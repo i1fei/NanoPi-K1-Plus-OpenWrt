@@ -31,6 +31,12 @@ This file records observed facts only. The wireless startup root cause remains u
 
 - In the six v2 recover rounds, five boots had no AP until stage 1 ran near 180 seconds. The cause of delayed AP creation remains unresolved.
 
+## 已知设计问题
+
+- `allow_recovery()` increments `recovery_count` and returns 1 after the fourth recovery inside the 3600-second window (`overlays/wifi_release_v1/files/usr/sbin/k1plus-wifi-watchdog:104-116`). Its caller uses `allow_recovery || exit 0` for stage 1, stage 2, and stage 3 (`.../k1plus-wifi-watchdog:203-205,222-224,243-245`), so the watchdog process exits without executing that recovery step. The init script configures `procd_set_param respawn 3600 5 5` (`overlays/wifi_release_v1/files/etc/init.d/k1plus-wifi-watchdog:10`); this is the configured respawn policy for repeated short-lived exits.
+- The same recovery-limit branch writes `/root/WATCHDOG-DISABLED.txt` (`.../k1plus-wifi-watchdog:111-114`). A repository search found no read of that path in the v2 watchdog or its init script; the administrator stop mechanism that is read is the UCI `.disabled='1'` check (`.../k1plus-wifi-watchdog:89-102`).
+- Current watchdog values are `interval=30`, `failure_threshold=5`, `reload_grace=60`, `command_timeout=25`, `recovery_window=3600`, `max_recoveries=3`, and `reboot_cooldown=3600` (`overlays/wifi_release_v1/files/etc/config/k1plus_watchdog:2-8`). With no earlier healthy check, the loop sleeps 30 seconds before its first check and reaches the fifth failed check after approximately 150 seconds, before stage 1; stage 1 then waits 60 seconds after `wifi reload` (`.../k1plus-wifi-watchdog:172-211`). These values therefore set the earliest first escalation timing; observed AP creation timing remains an observation, not a root-cause conclusion.
+
 ## 追加记录：已验证
 
 - B1 ordinary reboot observation: ten requested reboots were recorded. Serial logs show `phy0-ap0` creation from 23.278655s to 24.413122s after boot; all ten were before uptime 60s. The per-boot watchdog records show no stage 1/2/3 event during the observation windows. Evidence: `evidence/device-v2-followup-20261023.md`, `evidence/device-v2-Reboot-20261023-090532/runner.log`, and `reboot-01..10-com9.log` / `reboot-01..10-watchdog.log`.
