@@ -1,0 +1,67 @@
+name: audit-image
+
+on:
+  push:
+    branches:
+      - 'diag/strict-pair-*'
+    paths:
+      - '.github/audit-inputs.json'
+      - '.github/workflows/audit-image.yml'
+      - 'scripts/audit-image.py'
+      - 'scripts/make_variant.py'
+      - 'overlays/**'
+      - '.github/workflows/validate-k1-plus-profiles.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install image inspection tools
+        run: sudo apt-get update && sudo apt-get install -y squashfs-tools
+      - name: Read audit input
+        id: input
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, re
+          data = json.load(open('.github/audit-inputs.json', encoding='utf-8'))
+          if not re.fullmatch(r'[0-9]+', str(data['base_run_id'])):
+              raise SystemExit('base_run_id must contain digits only')
+          print('run_id=' + str(data['base_run_id']))
+          print('image_glob=' + str(data['image_glob']))
+          PY
+      - name: Download image
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.input.outputs.run_id }}
+          IMAGE_GLOB: ${{ steps.input.outputs.image_glob }}
+        run: |
+          set -euo pipefail
+          gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" --name NanoPi-K1-Plus-OpenWrt --dir work/download
+          mapfile -t images < <(find work/download -type f -name "$IMAGE_GLOB" -print | sort)
+          test "${#images[@]}" -eq 1
+          cp "${images[0]}" work/image.img.gz
+          sha256sum work/image.img.gz | tee work/image.sha256
+      - name: Generate manifest and sanitized audit
+        run: |
+          set -o pipefail
+          mkdir -p audit
+          sudo python3 scripts/audit-image.py --image work/image.img.gz --repo "$GITHUB_WORKSPACE" \
+            --manifest audit/manifest.tsv --report audit/report.txt | tee audit/summary.txt
+          test "${PIPESTATUS[0]}" -eq 0
+      - name: Upload audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit-image-${{ github.run_id }}
+          if-no-files-found: error
+          path: |
+            work/image.sha256
+            audit/manifest.tsv
+            audit/report.txt
+            audit/summary.txt
