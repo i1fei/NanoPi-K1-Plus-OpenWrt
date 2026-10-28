@@ -8,6 +8,7 @@ import re
 import shlex
 import stat
 import sys
+import tempfile
 from pathlib import Path
 
 
@@ -223,11 +224,6 @@ def resolve_command(root: Path, command: str) -> tuple[str, str]:
         return "yes", "ash builtin"
     if command in SOURCED_FUNCTIONS:
         return "yes", "sourced OpenWrt shell function"
-    if command == "/etc/init.d/$service":
-        matches = sorted(root.glob("etc/init.d/k1plus-*"))
-        if len(matches) == 3 and all(os.access(path, os.X_OK) for path in matches):
-            return "yes", "executable /etc/init.d/k1plus-{hw-watchdog,network,wifi-watchdog}"
-        return "no", "dynamic init scripts missing or not executable"
     if "$" in command or "`" in command:
         return "no", f"unresolved dynamic command: {command}"
 
@@ -245,6 +241,24 @@ def resolve_command(root: Path, command: str) -> tuple[str, str]:
             kind += f" -> {resolved_location}"
         return "yes", f"{location} ({kind})"
     return "no", "not found in rootfs PATH"
+
+
+def resolve_dynamic_init_services(root: Path, sources: set[str]) -> tuple[str, str]:
+    services: set[str] = set()
+    loop_pattern = re.compile(
+        r"(?m)^[ \t]*for[ \t]+service[ \t]+in[ \t]+([^;\n]+);[ \t]*do\b"
+    )
+    for source in sources:
+        text = (root / source.lstrip("/")).read_text(encoding="utf-8")
+        for match in loop_pattern.finditer(text):
+            services.update(shlex.split(match.group(1)))
+    if not services or any(not re.fullmatch(r"k1plus-[A-Za-z0-9_-]+", item) for item in services):
+        return "no", "could not resolve dynamic init service names"
+    paths = [root / "etc/init.d" / service for service in sorted(services)]
+    missing = [path.name for path in paths if not path.is_file() or not os.access(path, os.X_OK)]
+    if missing:
+        return "no", "missing or non-executable: " + ", ".join(missing)
+    return "yes", "executable: " + ", ".join(f"/etc/init.d/{path.name}" for path in paths)
 
 
 def self_test() -> None:
@@ -274,6 +288,32 @@ diag_collect=/usr/libexec/wifi-diag-collect.sh
         or "/usr/libexec/wifi-diag-collect.sh" not in resolved_commands
     ):
         raise RuntimeError(f"command extractor self-test failed: {sorted(commands)}")
+
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(temporary)
+        init_dir = root / "etc/init.d"
+        source = root / "etc/uci-defaults/provision"
+        init_dir.mkdir(parents=True)
+        source.parent.mkdir(parents=True)
+        source.write_text(
+            "for service in k1plus-network k1plus-wifi-settle; do\n"
+            "  /etc/init.d/$service enable\n"
+            "done\n",
+            encoding="utf-8",
+        )
+        for service in ("k1plus-network", "k1plus-wifi-settle"):
+            path = init_dir / service
+            path.write_text("#!/bin/sh\n", encoding="utf-8")
+            path.chmod(0o755)
+        if resolve_dynamic_init_services(root, {"/etc/uci-defaults/provision"})[0] != "yes":
+            raise RuntimeError("dynamic init dependency self-test rejected listed services")
+        (init_dir / "k1plus-wifi-settle").unlink()
+        if resolve_dynamic_init_services(root, {"/etc/uci-defaults/provision"})[0] != "no":
+            raise RuntimeError("dynamic init dependency self-test missed a missing listed service")
+        (init_dir / "k1plus-wifi-settle").write_text("#!/bin/sh\n", encoding="utf-8")
+        (init_dir / "k1plus-wifi-settle").chmod(0o644)
+        if resolve_dynamic_init_services(root, {"/etc/uci-defaults/provision"})[0] != "no":
+            raise RuntimeError("dynamic init dependency self-test missed a non-executable service")
 
 
 def main() -> int:
@@ -310,6 +350,8 @@ def main() -> int:
     for command in sorted(command_sources):
         if command in local_functions:
             present, location = "yes", "function defined in release script"
+        elif command == "/etc/init.d/$service":
+            present, location = resolve_dynamic_init_services(root, command_sources[command])
         else:
             present, location = resolve_command(root, command)
         failures += present != "yes"

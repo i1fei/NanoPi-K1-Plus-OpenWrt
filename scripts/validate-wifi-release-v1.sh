@@ -21,6 +21,14 @@ require_exec() {
 	[ -x "$root/$1" ] && pass "$2" || fail "$2"
 }
 
+require_path_exec() {
+	if [ -x "$root/bin/$1" ] || [ -x "$root/usr/bin/$1" ]; then
+		pass "$2"
+	else
+		fail "$2"
+	fi
+}
+
 require_pattern() {
 	grep -Eq "$2" "$root/$1" && pass "$3" || fail "$3"
 }
@@ -135,13 +143,15 @@ require_pattern "$watchdog" 'wifi reload' WIFI_WATCHDOG_RELOAD_STAGE
 require_pattern "$watchdog" 'ubus call network\.wireless status' WIFI_WATCHDOG_NETIFD_STATUS
 require_pattern "$watchdog" 'administrator_disabled' WIFI_WATCHDOG_ADMIN_DISABLED_GUARD
 require_pattern "$watchdog" 'reload_grace' WIFI_WATCHDOG_RELOAD_GRACE
-require_pattern "$watchdog" 'WATCHDOG-DISABLED.txt' WIFI_WATCHDOG_LOOP_GUARD
+reject_pattern "$watchdog" 'WATCHDOG-DISABLED\.txt' WIFI_WATCHDOG_NO_PERMANENT_DISABLE_MARKER
+require_pattern "$watchdog" 'recovery limit reached; suppressing until window ends' WIFI_WATCHDOG_RECOVERY_LIMIT_SUPPRESSED
 reject_pattern "$watchdog" '(^|[[:space:]])wifi[[:space:]]+(down|up)([[:space:]]|$)' WIFI_WATCHDOG_NO_DOWN_UP
 reject_pattern "$watchdog" 'wlan0|wlan1' WIFI_WATCHDOG_DYNAMIC_INTERFACE
 reject_pattern usr/sbin/k1plus-network-mode 'wlan0|wlan1' NETWORK_MODE_DYNAMIC_INTERFACE
 
 require_file etc/wifi-watchdog.mode WIFI_WATCHDOG_MODE_FILE
 require_pattern etc/wifi-watchdog.mode '^(recover|observe)[[:space:]]*$' WIFI_WATCHDOG_MODE_VALID
+require_path_exec cksum SETTLE_CKSUM_APPLET
 require_pattern "$watchdog" 'wifi-diag-collect\.sh' WIFI_WATCHDOG_DIAG_COLLECTOR
 require_pattern "$watchdog" 'wifi-watchdog\.mode' WIFI_WATCHDOG_MODE_CONTROL
 require_pattern "$watchdog" 'watchdog\.log' WIFI_WATCHDOG_PERSISTENT_LOG
