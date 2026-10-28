@@ -182,7 +182,7 @@ jobs:
           done
           make defconfig
           if [ "$BUILD_PROFILE" = wifi_release_v1 ]; then
-            grep -qx 'CONFIG_BUSYBOX_DEFAULT_CKSUM=y' .config &&
+            grep -qx 'CONFIG_BUSYBOX_CUSTOM=y' .config &&
               grep -qx 'CONFIG_BUSYBOX_CONFIG_CKSUM=y' .config || {
               echo 'BusyBox cksum applet was not retained by make defconfig' >&2
               exit 1
