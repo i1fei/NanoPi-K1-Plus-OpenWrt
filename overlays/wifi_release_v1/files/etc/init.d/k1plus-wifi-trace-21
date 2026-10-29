@@ -3,5 +3,6 @@
 START=21
 
 start() {
-	/usr/libexec/k1plus-wifi-trace init:START21
+	("${K1PLUS_TRACE_HELPER:-/usr/libexec/k1plus-wifi-trace}" init:START21 </dev/null >>/tmp/wifi-trace.log 2>&1) >/dev/null 2>&1 &
+	return 0
 }

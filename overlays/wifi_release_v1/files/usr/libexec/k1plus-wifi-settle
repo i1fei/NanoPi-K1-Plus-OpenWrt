@@ -2,20 +2,21 @@
 
 log=/root/wifi-diag/settle.log
 marker=/tmp/k1plus-wifi-settle-reload
-mkdir -p /root/wifi-diag 2>/dev/null || exit 1
+run3() { timeout -s KILL 3 "$@"; }
+run3 mkdir -p /root/wifi-diag 2>/dev/null || exit 1
 
-up() { cut -d. -f1 /proc/uptime 2>/dev/null; }
+up() { run3 cut -d. -f1 /proc/uptime 2>/dev/null; }
 event() {
-	printf '%s up=%ss %s\n' "$(date '+%F %T')" "$(up)" "$*" >> "$log"
+	printf '%s up=%ss %s\n' "$(run3 date '+%F %T')" "$(up)" "$*" >> "$log"
 }
 disabled() {
-	uci show wireless 2>/dev/null | grep -q "\.disabled='1'$"
+	run3 uci show wireless 2>/dev/null | run3 grep -q "\.disabled='1'$"
 }
 ap_present() {
 	local ap_interface
-	ap_interface=$(iw dev 2>/dev/null | awk '$1 == "Interface" { name=$2 } $1 == "type" && $2 == "AP" { print name; exit }')
+	ap_interface=$(run3 iw dev 2>/dev/null | run3 awk '$1 == "Interface" { name=$2 } $1 == "type" && $2 == "AP" { print name; exit }')
 	[ -n "$ap_interface" ] || return 1
-	iw dev "$ap_interface" info 2>/dev/null | awk '$1 == "type" && $2 == "AP" { found=1 } END { exit !found }'
+	run3 iw dev "$ap_interface" info 2>/dev/null | run3 awk '$1 == "type" && $2 == "AP" { found=1 } END { exit !found }'
 }
 
 event 'settle: started'
@@ -31,7 +32,7 @@ while [ "$elapsed" -lt 120 ]; do
 		event "settle: AP present at up=$(up)s"
 		exit 0
 	fi
-	checksum=$(cksum /etc/config/wireless 2>/dev/null | awk '{print $1 ":" $2}')
+	checksum=$(run3 cksum /etc/config/wireless 2>/dev/null | run3 awk '{print $1 ":" $2}')
 	if [ -n "$checksum" ] && [ "$checksum" = "$last_cksum" ]; then
 		[ -n "$stable_since" ] || stable_since=$(up)
 	else
@@ -45,7 +46,7 @@ while [ "$elapsed" -lt 120 ]; do
 		fi
 		: > "$marker" || exit 1
 		reload_start=$(up)
-		wifi reload
+		run3 wifi reload
 		reload_rc=$?
 		event "settle: wifi reload at up=${reload_start}s rc=$reload_rc"
 		post_elapsed=0
@@ -55,13 +56,13 @@ while [ "$elapsed" -lt 120 ]; do
 				exit 0
 			fi
 			[ "$post_elapsed" -ge 30 ] && break
-			sleep 2
+			run3 sleep 2
 			post_elapsed=$((post_elapsed + 2))
 		done
 		event 'settle: AP still missing'
 		exit 0
 	fi
-	sleep 2
+	run3 sleep 2
 	elapsed=$((elapsed + 2))
 done
 event 'settle: timeout waiting for stable configuration and phy0'

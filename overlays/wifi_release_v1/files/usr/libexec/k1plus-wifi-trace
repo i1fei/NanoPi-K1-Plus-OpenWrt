@@ -4,17 +4,18 @@ log=/tmp/wifi-trace.log
 limit=65536
 point=${1:-unknown}
 action=${ACTION:-n/a}
-up=$(cut -d' ' -f1 /proc/uptime 2>/dev/null)
-mtime=$(ls -l --full-time /etc/config/wireless 2>&1 | head -n 1)
-sections=$(uci -q show wireless 2>/dev/null | awk -F= '
+run3() { timeout -s KILL 3 "$@"; }
+up=$(run3 cut -d' ' -f1 /proc/uptime 2>/dev/null)
+mtime=$(run3 ls -l --full-time /etc/config/wireless 2>&1 | run3 head -n 1)
+sections=$(run3 uci -q show wireless 2>/dev/null | run3 awk -F= '
   $2 == "wifi-iface" || $2 == "wifi-device" { print $1 " type=" $2 }
   /\.(device|disabled|path|htmode)=/ { if ($1 ~ /\.(device|disabled|path|htmode)$/) print $0 }
 ')
-status=$(ubus call network.wireless status 2>/dev/null)
-if [ -n "$status" ] && command -v jsonfilter >/dev/null 2>&1; then
-	up_state=$(printf '%s\n' "$status" | jsonfilter -e '@.radio0.up' 2>/dev/null || echo n/a)
-	pending=$(printf '%s\n' "$status" | jsonfilter -e '@.radio0.pending' 2>/dev/null || echo n/a)
-	interfaces=$(printf '%s\n' "$status" | jsonfilter -e '@.radio0.interfaces[*]' 2>/dev/null | wc -l | tr -d ' ')
+status=$(run3 ubus call network.wireless status 2>/dev/null)
+if [ -n "$status" ]; then
+	up_state=$(printf '%s\n' "$status" | run3 jsonfilter -e '@.radio0.up' 2>/dev/null || echo n/a)
+	pending=$(printf '%s\n' "$status" | run3 jsonfilter -e '@.radio0.pending' 2>/dev/null || echo n/a)
+	interfaces=$(printf '%s\n' "$status" | run3 jsonfilter -e '@.radio0.interfaces[*]' 2>/dev/null | run3 wc -l | run3 tr -d ' ')
 	[ -n "$up_state" ] || up_state=n/a
 	[ -n "$pending" ] || pending=n/a
 	[ -n "$interfaces" ] || interfaces=n/a
@@ -24,9 +25,9 @@ else
 	interfaces=n/a
 fi
 
-line="up=${up:-n/a}s point=$point ACTION=$action wireless_mtime=[$mtime] sections=[$(printf '%s' "$sections" | tr '\n' ';')] radio0_up=$up_state pending=$pending interfaces=$interfaces"
-current=$(wc -c < "$log" 2>/dev/null || echo 0)
-line_size=$(printf '%s\n' "$line" | wc -c)
+line="up=${up:-n/a}s point=$point ACTION=$action wireless_mtime=[$mtime] sections=[$(printf '%s' "$sections" | run3 tr '\n' ';')] radio0_up=$up_state pending=$pending interfaces=$interfaces"
+current=$(run3 wc -c < "$log" 2>/dev/null || echo 0)
+line_size=$(printf '%s\n' "$line" | run3 wc -c)
 if [ "$current" -le "$limit" ] && [ $((current + line_size)) -le "$limit" ]; then
 	printf '%s\n' "$line" >> "$log"
 fi

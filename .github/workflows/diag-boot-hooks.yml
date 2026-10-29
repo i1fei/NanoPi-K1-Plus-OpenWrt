@@ -1,0 +1,71 @@
+name: Diag boot hook bounds
+
+on:
+  push:
+    branches:
+      - 'diag/**'
+    paths:
+      - '.github/workflows/diag-boot-hooks.yml'
+      - 'overlays/wifi_release_v1/files/etc/uci-defaults/**'
+      - 'overlays/wifi_release_v1/files/etc/init.d/k1plus-wifi-trace-*'
+      - 'overlays/wifi_release_v1/files/etc/hotplug.d/ieee80211/00-k1plus-trace'
+      - 'overlays/wifi_release_v1/files/usr/libexec/k1plus-wifi-trace'
+      - 'scripts/test-boot-hooks-nonblocking.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  busybox-ash:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install BusyBox
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y busybox-static
+          busybox | head -n 1
+
+      - name: Lint and bounded-hook tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          busybox_bin="$(command -v busybox)"
+          mkdir -p .work/busybox-bin
+          for applet in sh awk grep timeout cut ls head wc tr date sleep mkdir; do
+            ln -sf "$busybox_bin" ".work/busybox-bin/$applet"
+          done
+          files=(
+            overlays/wifi_release_v1/files/etc/uci-defaults/00-k1plus-trace
+            overlays/wifi_release_v1/files/etc/uci-defaults/99zz-k1plus-trace
+            overlays/wifi_release_v1/files/etc/init.d/k1plus-wifi-trace-19
+            overlays/wifi_release_v1/files/etc/init.d/k1plus-wifi-trace-21
+            overlays/wifi_release_v1/files/etc/hotplug.d/ieee80211/00-k1plus-trace
+            overlays/wifi_release_v1/files/usr/libexec/k1plus-wifi-trace
+          )
+          for file in "${files[@]}"; do
+            busybox ash -n "$file"
+            echo "PASS ash -n $file"
+          done
+          PATH="$GITHUB_WORKSPACE/.work/busybox-bin:$PATH" busybox ash \
+            scripts/test-boot-hooks-nonblocking.sh .
+
+          legacy="$RUNNER_TEMP/v3-sync"
+          mkdir -p "$legacy"
+          git show 419bba4:overlays/wifi_release_v1/files/usr/libexec/k1plus-wifi-trace > "$legacy/helper"
+          git show 419bba4:overlays/wifi_release_v1/files/etc/uci-defaults/00-k1plus-trace > "$legacy/uci-defaults-00"
+          sed -i "s|/usr/libexec/k1plus-wifi-trace|$legacy/helper|" "$legacy/uci-defaults-00"
+          set +e
+          PATH="$GITHUB_WORKSPACE/.work/busybox-bin:$PATH" \
+            busybox timeout -s KILL 5 busybox ash "$legacy/uci-defaults-00"
+          rc=$?
+          set -e
+          if [ "$rc" -eq 0 ]; then
+            echo 'FAIL legacy v3 synchronous hook unexpectedly returned'
+            exit 1
+          fi
+          echo "EXPECTED_FAIL negative-control legacy-v3-sync-hook timeout_rc=$rc"
