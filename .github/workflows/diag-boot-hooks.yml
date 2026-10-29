@@ -57,19 +57,25 @@ jobs:
           legacy="$RUNNER_TEMP/v3-sync"
           mkdir -p "$legacy"
           mkdir -p "$legacy/bin"
-          printf '#!/bin/sh\nexec sleep 3600\n' > "$legacy/bin/uci"
-          printf '#!/bin/sh\nexec sleep 3600\n' > "$legacy/bin/ubus"
+          export LEGACY_STUB_LOG="$legacy/stub.log"
+          printf '#!/bin/sh\necho uci >> "$LEGACY_STUB_LOG"\nexec sleep 3600\n' > "$legacy/bin/uci"
+          printf '#!/bin/sh\necho ubus >> "$LEGACY_STUB_LOG"\nexec sleep 3600\n' > "$legacy/bin/ubus"
           chmod +x "$legacy/bin/uci" "$legacy/bin/ubus"
           git show 419bba4:overlays/wifi_release_v1/files/usr/libexec/k1plus-wifi-trace > "$legacy/helper"
           git show 419bba4:overlays/wifi_release_v1/files/etc/uci-defaults/00-k1plus-trace > "$legacy/uci-defaults-00"
           sed -i "s|/usr/libexec/k1plus-wifi-trace|$legacy/helper|" "$legacy/uci-defaults-00"
+          command -v uci
+          cat "$legacy/uci-defaults-00"
           set +e
           PATH="$legacy/bin:$GITHUB_WORKSPACE/.work/busybox-bin:$PATH" \
-            busybox timeout -s KILL 5 busybox ash "$legacy/uci-defaults-00"
+            busybox timeout -s KILL 5 busybox ash -x "$legacy/uci-defaults-00" > "$legacy/negative-control.log" 2>&1
           rc=$?
           set -e
+          cat "$legacy/negative-control.log"
+          cat "$legacy/stub.log" || true
           if [ "$rc" -eq 0 ]; then
             echo 'FAIL legacy v3 synchronous hook unexpectedly returned'
             exit 1
           fi
+          grep -q uci "$legacy/stub.log" || { echo 'FAIL legacy hook did not reach uci stub'; exit 1; }
           echo "EXPECTED_FAIL negative-control legacy-v3-sync-hook timeout_rc=$rc"
