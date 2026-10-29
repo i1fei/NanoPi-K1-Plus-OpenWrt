@@ -37,6 +37,11 @@ run_bounded() {
 		timeout -s KILL 5 "$@"; then
 		fail "$label did not return within 5 seconds"
 	fi
+	i=0
+	while [ ! -s "$pidfile" ] && [ "$i" -lt 10 ]; do
+		sleep 0.1
+		i=$((i + 1))
+	done
 	[ -s "$pidfile" ] || fail "$label did not launch detached helper"
 	pid=$(cat "$pidfile")
 	kill -0 "$pid" 2>/dev/null || fail "$label helper did not survive its parent"
