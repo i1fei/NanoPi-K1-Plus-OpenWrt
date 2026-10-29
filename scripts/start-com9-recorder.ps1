@@ -1,11 +1,12 @@
 param(
 	[Parameter(Mandatory = $true)][string]$LogPath,
 	[Parameter(Mandatory = $true)][string]$CommandDirectory,
+	[ValidatePattern('^COM\d+$')][string]$Port = 'COM9',
 	[switch]$Restart
 )
 
 $ErrorActionPreference = 'Stop'
-$taskName = 'Codex-NanoPi-COM9-Recorder'
+$taskName = "Codex-NanoPi-$Port-Recorder"
 $recorder = Join-Path $PSScriptRoot 'com9-recorder.ps1'
 $pwsh = Join-Path $PSHOME 'pwsh.exe'
 $logPath = [IO.Path]::GetFullPath($LogPath)
@@ -22,7 +23,7 @@ if ($existing) {
 		Start-Sleep -Seconds 2
 	}
 } else {
-	$arguments = '-NoProfile -NonInteractive -File "{0}" -LogPath "{1}" -CommandDirectory "{2}"' -f $recorder, $logPath, $commandDirectory
+	$arguments = '-NoProfile -NonInteractive -File "{0}" -LogPath "{1}" -CommandDirectory "{2}" -Port "{3}"' -f $recorder, $logPath, $commandDirectory, $Port
 	$action = New-ScheduledTaskAction -Execute $pwsh -Argument $arguments
 	$principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive -RunLevel Limited
 	$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew
