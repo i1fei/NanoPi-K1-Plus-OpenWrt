@@ -63,6 +63,7 @@ jobs:
           chmod +x "$legacy/bin/uci" "$legacy/bin/ubus"
           git show 419bba4:overlays/wifi_release_v1/files/usr/libexec/k1plus-wifi-trace > "$legacy/helper"
           git show 419bba4:overlays/wifi_release_v1/files/etc/uci-defaults/00-k1plus-trace > "$legacy/uci-defaults-00"
+          chmod +x "$legacy/helper"
           sed -i "s|/usr/libexec/k1plus-wifi-trace|$legacy/helper|" "$legacy/uci-defaults-00"
           PATH="$legacy/bin:$GITHUB_WORKSPACE/.work/busybox-bin:$PATH" command -v uci
           cat "$legacy/uci-defaults-00"
